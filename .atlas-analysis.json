@@ -1,0 +1,76 @@
+{
+  "projectType": "sdk-library",
+  "projectName": "Nanolytics",
+  "projectDescription": "Tiny analytics library which can sync with a remote server periodically",
+  "theme": "mint",
+  "primaryColor": "#6366f1",
+  "lightColor": "#818cf8",
+  "darkColor": "#4f46e5",
+  "navigation": {
+    "groups": [
+      {
+        "group": "Getting Started",
+        "pages": [
+          "introduction",
+          "installation",
+          "quickstart"
+        ]
+      },
+      {
+        "group": "Core Concepts",
+        "pages": [
+          "concepts/events",
+          "concepts/batching",
+          "concepts/storage"
+        ]
+      },
+      {
+        "group": "API Reference",
+        "pages": [
+          "api/init",
+          "api/record",
+          "api/commit",
+          "api/get-events",
+          "api/clear-events",
+          "api/get-saved-events",
+          "api/delete-saved-events",
+          "api/get-user-info"
+        ]
+      },
+      {
+        "group": "Guides",
+        "pages": [
+          "guides/custom-submission",
+          "guides/event-context",
+          "guides/session-tracking"
+        ]
+      },
+      {
+        "group": "Examples",
+        "pages": [
+          "examples/basic-tracking",
+          "examples/react-integration",
+          "examples/custom-backend"
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Zero dependencies for minimal bundle size",
+    "Automatic event batching with configurable thresholds",
+    "Local storage persistence for offline support",
+    "Flexible custom submission logic",
+    "Session tracking with visibility change detection",
+    "TypeScript support with full type definitions"
+  ],
+  "publicApiSurface": [
+    "init(submitFn, options)",
+    "record(event, context?, moreContext?)",
+    "commit()",
+    "clearEvents()",
+    "getSavedEvents()",
+    "deleteSavedEvents()",
+    "getEvents()",
+    "getUserInfo()"
+  ]
+}
