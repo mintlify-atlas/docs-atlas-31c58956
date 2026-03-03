@@ -1,0 +1,108 @@
+---
+title: "getUserInfo"
+description: "Retrieves user information from the browser"
+---
+
+## Function Signature
+
+```typescript
+getUserInfo(): { language: string; platform: string; userAgent: string }
+```
+
+Retrieves user information from the browser's navigator object, including language preferences, platform, and user agent string.
+
+## Parameters
+
+This function takes no parameters.
+
+## Return Value
+
+<ResponseField name="userInfo" type="object">
+  An object containing user browser information:
+  
+  <ResponseField name="language" type="string">
+    The user's preferred language setting from `window.navigator.language` (e.g., "en-US", "fr-FR").
+  </ResponseField>
+  
+  <ResponseField name="platform" type="string">
+    The platform/operating system from `window.navigator.platform` (e.g., "MacIntel", "Win32", "Linux x86_64").
+  </ResponseField>
+  
+  <ResponseField name="userAgent" type="string">
+    The browser's user agent string from `window.navigator.userAgent`, which contains information about the browser, operating system, and rendering engine.
+  </ResponseField>
+</ResponseField>
+
+## Usage Examples
+
+### Get Current User Info
+
+```javascript
+import { getUserInfo } from 'nanolytics';
+
+const userInfo = getUserInfo();
+console.log(userInfo);
+// {
+//   language: "en-US",
+//   platform: "MacIntel",
+//   userAgent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)..."
+// }
+```
+
+### Include in Analytics Submission
+
+```javascript
+import { getUserInfo, getSavedEvents } from 'nanolytics';
+
+const submitToServer = async () => {
+  const userInfo = getUserInfo();
+  const events = getSavedEvents();
+  
+  await fetch('/api/analytics', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      state: userInfo,
+      data: events
+    })
+  });
+};
+```
+
+### Display User Environment
+
+```javascript
+import { getUserInfo } from 'nanolytics';
+
+const displayUserEnvironment = () => {
+  const { language, platform, userAgent } = getUserInfo();
+  
+  console.log(`Language: ${language}`);
+  console.log(`Platform: ${platform}`);
+  console.log(`Browser: ${userAgent}`);
+};
+```
+
+### Log User Info on Session Start
+
+```javascript
+import { record, getUserInfo } from 'nanolytics';
+
+const startSession = () => {
+  const userInfo = getUserInfo();
+  
+  record('SessionStarted', 'App', {
+    language: userInfo.language,
+    platform: userInfo.platform
+  });
+};
+```
+
+## Notes
+
+- This function reads directly from `window.navigator`, so it must be called in a browser environment
+- The returned object is automatically passed to your submit callback function by the `init()` function
+- User agent strings can be quite long and contain detailed browser/OS information
+- Language is typically in BCP 47 format (e.g., "en-US", "zh-CN")
+- Platform values vary by browser and may be deprecated in some browsers in favor of User-Agent Client Hints
+- This information is useful for understanding your user base and debugging platform-specific issues

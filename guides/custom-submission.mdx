@@ -1,0 +1,343 @@
+---
+title: Custom Submission Logic
+description: Learn how to implement custom submission callbacks to send analytics data to your backend using fetch, axios, or other HTTP clients.
+---
+
+Nanolytics gives you complete control over how analytics events are submitted to your server. The library handles batching and storage, while you provide the submission logic through a callback function.
+
+## Understanding SubmitAnalyticsCallback
+
+The `SubmitAnalyticsCallback` is a function type that defines how your analytics data should be submitted:
+
+```typescript
+type SubmitAnalyticsCallback = (userInfo: Record<string, any>, events: Event[]) => Promise<void>;
+```
+
+### Parameters
+
+<Steps>
+  <Step title="userInfo">
+    An object containing browser information retrieved automatically by `getUserInfo()`. This includes:
+    - `language`: User's browser language (e.g., "en-US")
+    - `platform`: Operating system platform (e.g., "MacIntel")
+    - `userAgent`: Full browser user agent string
+  </Step>
+  
+  <Step title="events">
+    An array of `Event` objects stored in localStorage. Each event contains:
+    - `e`: Event name (required)
+    - `t`: Unix timestamp in seconds (required)
+    - `c`: Optional context string
+    - Additional custom properties from `moreContext`
+  </Step>
+</Steps>
+
+### When the Callback is Called
+
+Your submission callback is invoked automatically when:
+
+1. **Event threshold is exceeded**: When saved events in localStorage surpass `maxEventsLimitUntilSubmit` (default: 100)
+2. **On initialization**: The library checks saved events during `init()` and submits if the threshold is exceeded
+3. **3-second delay**: Submission is delayed by 3 seconds for a smoother user experience
+
+<Note>
+  The callback must return a Promise. Upon successful completion (resolved promise), Nanolytics automatically calls `deleteSavedEvents()` to clear the submitted events from localStorage.
+</Note>
+
+## Implementation Examples
+
+### Using Native Fetch
+
+The simplest approach using the browser's built-in fetch API:
+
+```javascript
+import { init } from 'nanolytics';
+
+const submitAnalytics = async (userInfo, events) => {
+  const response = await fetch('https://api.example.com/analytics', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      state: userInfo,
+      data: events,
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`HTTP error! status: ${response.status}`);
+  }
+
+  return response.json();
+};
+
+init(submitAnalytics, { maxEventsLimitUntilSubmit: 150 });
+```
+
+### Using Axios
+
+For projects already using axios, you can leverage its features:
+
+```javascript
+import axios from 'axios';
+import { init } from 'nanolytics';
+
+const submitAnalytics = async (userInfo, events) => {
+  try {
+    const response = await axios.put('/analytics-endpoint', {
+      state: userInfo,
+      data: events,
+    });
+    return response.data;
+  } catch (error) {
+    console.error('Analytics submission failed:', error);
+    throw error; // Re-throw to prevent deletion of events
+  }
+};
+
+init(submitAnalytics);
+```
+
+<Warning>
+  Always re-throw errors in your catch blocks if you want to prevent event deletion. If the promise rejects, `deleteSavedEvents()` won't be called, preserving the events for the next submission attempt.
+</Warning>
+
+### Using a Custom API Client
+
+<CodeGroup>
+
+```javascript Fetch with Auth
+import { init } from 'nanolytics';
+
+const submitAnalytics = async (userInfo, events) => {
+  const token = localStorage.getItem('authToken');
+  
+  const response = await fetch('https://api.example.com/analytics', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`,
+    },
+    body: JSON.stringify({
+      state: userInfo,
+      data: events,
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Submission failed: ${response.statusText}`);
+  }
+};
+
+init(submitAnalytics, { maxEventsLimitUntilSubmit: 100 });
+```
+
+```javascript Axios with Interceptors
+import axios from 'axios';
+import { init } from 'nanolytics';
+
+// Configure axios instance
+const apiClient = axios.create({
+  baseURL: 'https://api.example.com',
+  timeout: 10000,
+});
+
+// Add request interceptor for auth
+apiClient.interceptors.request.use((config) => {
+  const token = localStorage.getItem('authToken');
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
+});
+
+const submitAnalytics = async (userInfo, events) => {
+  const response = await apiClient.post('/analytics', {
+    state: userInfo,
+    data: events,
+  });
+  return response.data;
+};
+
+init(submitAnalytics, { maxEventsLimitUntilSubmit: 200 });
+```
+
+</CodeGroup>
+
+## Error Handling Strategies
+
+### Retry Logic
+
+Implement retry logic for failed submissions:
+
+```javascript
+const submitWithRetry = async (userInfo, events, maxRetries = 3) => {
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      const response = await fetch('https://api.example.com/analytics', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ state: userInfo, data: events }),
+      });
+
+      if (response.ok) {
+        return response.json();
+      }
+
+      if (attempt === maxRetries) {
+        throw new Error(`Failed after ${maxRetries} attempts`);
+      }
+
+      // Wait before retrying (exponential backoff)
+      await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
+    } catch (error) {
+      if (attempt === maxRetries) {
+        throw error;
+      }
+    }
+  }
+};
+
+init(submitWithRetry, { maxEventsLimitUntilSubmit: 100 });
+```
+
+### Graceful Degradation
+
+Log errors without breaking the user experience:
+
+```javascript
+const submitAnalytics = async (userInfo, events) => {
+  try {
+    const response = await fetch('https://api.example.com/analytics', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ state: userInfo, data: events }),
+    });
+
+    if (!response.ok) {
+      // Log to monitoring service but don't break
+      console.warn('Analytics submission failed:', response.status);
+      return; // Don't throw, allowing events to be deleted
+    }
+  } catch (error) {
+    // Network error - log but don't disrupt user
+    console.warn('Analytics network error:', error.message);
+    // Don't throw - events will be deleted and lost
+  }
+};
+```
+
+<Tip>
+  Decide whether failed submissions should preserve events for retry or gracefully fail. For critical analytics, preserve events by throwing errors. For non-critical tracking, allow deletion to prevent localStorage from filling up.
+</Tip>
+
+## Response Handling
+
+The library expects a resolved promise for successful submissions. Here's how the flow works:
+
+```javascript
+// From src/index.ts:18-29
+const savedEvents = JSON.parse(localStorage.getItem('events') || '[]');
+
+if (savedEvents.length > (options.maxEventsLimitUntilSubmit || 100)) {
+  setTimeout(() => {
+    submitFn(getUserInfo(), savedEvents).then(deleteSavedEvents);
+  }, 3000);
+}
+```
+
+<Steps>
+  <Step title="Threshold Check">
+    On `init()`, Nanolytics loads events from localStorage and checks if the count exceeds `maxEventsLimitUntilSubmit`
+  </Step>
+  
+  <Step title="Delayed Submission">
+    If threshold is exceeded, submission is scheduled after a 3-second delay for smoother UX
+  </Step>
+  
+  <Step title="Callback Execution">
+    Your `submitFn` is called with `userInfo` and the saved events array
+  </Step>
+  
+  <Step title="Automatic Cleanup">
+    On successful promise resolution, `deleteSavedEvents()` is automatically called to clear localStorage
+  </Step>
+</Steps>
+
+<Warning>
+  A 200 OK response will cause the library to flush its store. Ensure your server only returns success when events are successfully persisted.
+</Warning>
+
+## Configuration Options
+
+Customize the submission behavior with `InitOptions`:
+
+```typescript
+type InitOptions = {
+  maxEventsLimitUntilSubmit?: number; // Default: 100
+};
+```
+
+### Examples
+
+<Tabs>
+  <Tab title="High Frequency">
+    ```javascript
+    // Submit every 50 events for real-time analytics
+    init(submitAnalytics, { maxEventsLimitUntilSubmit: 50 });
+    ```
+  </Tab>
+  
+  <Tab title="Low Frequency">
+    ```javascript
+    // Batch larger groups to reduce server requests
+    init(submitAnalytics, { maxEventsLimitUntilSubmit: 500 });
+    ```
+  </Tab>
+  
+  <Tab title="Default">
+    ```javascript
+    // Use default threshold of 100 events
+    init(submitAnalytics, {});
+    ```
+  </Tab>
+</Tabs>
+
+## Testing Your Submission Logic
+
+When testing, you can use a mock callback:
+
+```javascript
+// From src/index.test.ts:99-120
+it('should submit events when max limit is reached', () => {
+  const submitFn = vi.fn().mockResolvedValue({});
+  
+  // Initialize with low threshold for testing
+  init(submitFn, { maxEventsLimitUntilSubmit: 2 });
+  
+  record('Event1');
+  record('Event2');
+  commit(); // Save to localStorage
+  
+  // Re-initialize to trigger submission check
+  init(submitFn, { maxEventsLimitUntilSubmit: 2 });
+  
+  // Verify callback was called with correct arguments
+  expect(submitFn).toHaveBeenCalledWith(
+    expect.any(Object), // userInfo
+    savedEvents
+  );
+});
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Event Context" icon="tag" href="/guides/event-context">
+    Learn how to add rich context to your events
+  </Card>
+  <Card title="Session Tracking" icon="clock" href="/guides/session-tracking">
+    Understand automatic session management
+  </Card>
+</CardGroup>

@@ -1,0 +1,88 @@
+---
+title: "commit"
+description: "Commits current session events to localStorage and ends the session"
+---
+
+## Function Signature
+
+```typescript
+commit(): void
+```
+
+Commits the current session events to localStorage and ends the session by recording an `EndSession` event. This persists all in-memory events to browser storage.
+
+## Parameters
+
+This function takes no parameters.
+
+## Return Value
+
+<ResponseField name="void" type="void">
+  This function does not return a value.
+</ResponseField>
+
+## Behavior
+
+When `commit()` is called:
+
+1. Records an `EndSession` event automatically
+2. Retrieves any previously saved events from localStorage
+3. Combines them with the current session's events
+4. Saves the merged array back to localStorage under the key `'events'`
+5. Events remain in memory until `clearEvents()` is called
+
+## Usage Examples
+
+### Manual Commit
+
+```javascript
+import { commit } from 'nanolytics';
+
+// Manually commit events at any time
+commit();
+```
+
+### Commit on Navigation
+
+```javascript
+// Save events before user navigates away
+window.onbeforeunload = () => {
+  commit();
+};
+```
+
+### Commit After Critical Action
+
+```javascript
+import { record, commit } from 'nanolytics';
+
+const handleCheckout = async () => {
+  record('CheckoutCompleted', 'CartPage', {
+    total: 99.99,
+    items: 3
+  });
+  
+  // Ensure this critical event is saved immediately
+  commit();
+  
+  // Proceed with navigation
+  window.location.href = '/thank-you';
+};
+```
+
+### Periodic Commits
+
+```javascript
+// Commit events every 5 minutes as a backup
+setInterval(() => {
+  commit();
+}, 5 * 60 * 1000);
+```
+
+## Notes
+
+- `commit()` is automatically called by the `init()` function when the window is about to close
+- An `EndSession` event is always added when committing
+- Previously saved events are preserved and merged with new events
+- This function does not clear events from memory - use `clearEvents()` for that
+- Committed events persist in localStorage until they are submitted and deleted by the server response handler

@@ -1,0 +1,514 @@
+---
+title: Session Tracking
+description: Understand how Nanolytics automatically tracks user sessions with StartSession, EndSession, Hidden, and Visible events.
+---
+
+Nanolytics provides automatic session tracking out of the box. When you initialize the library, it sets up event listeners to monitor session lifecycle and page visibility, capturing user engagement patterns without any manual instrumentation.
+
+## Automatic Session Events
+
+Nanolytics automatically records four key session events:
+
+<Steps>
+  <Step title="StartSession">
+    Recorded immediately when `init()` is called, marking the beginning of a user session.
+  </Step>
+  
+  <Step title="EndSession">
+    Recorded when `commit()` is called, typically on page unload or navigation.
+  </Step>
+  
+  <Step title="Hidden">
+    Recorded when the page becomes hidden (user switches tabs, minimizes browser).
+  </Step>
+  
+  <Step title="Visible">
+    Recorded when the page becomes visible again (user returns to the tab).
+  </Step>
+</Steps>
+
+## Session Initialization
+
+When you call `init()`, Nanolytics automatically:
+
+1. Records a `StartSession` event
+2. Sets up a `visibilitychange` listener
+3. Sets up a `beforeunload` handler
+
+```javascript
+// From src/index.ts:18-30
+export const init = (submitFn: SubmitAnalyticsCallback, options: InitOptions) => {
+  window.onbeforeunload = commit; // Save events when window closes
+  window.addEventListener('visibilitychange', () => 
+    record(document.hidden ? 'Hidden' : 'Visible')
+  ); // Track visibility changes
+
+  record('StartSession');
+
+  const savedEvents = JSON.parse(localStorage.getItem('events') || '[]');
+
+  if (savedEvents.length > (options.maxEventsLimitUntilSubmit || 100)) {
+    setTimeout(() => {
+      submitFn(getUserInfo(), savedEvents).then(deleteSavedEvents);
+    }, 3000);
+  }
+};
+```
+
+### StartSession Event
+
+The `StartSession` event is recorded on line 22 of `src/index.ts`:
+
+```javascript
+record('StartSession');
+```
+
+This creates an event object:
+
+```javascript
+{
+  e: 'StartSession',
+  t: 1709481234 // Current Unix timestamp in seconds
+}
+```
+
+<Note>
+  The `StartSession` event is recorded in memory immediately, not in localStorage. It will be persisted when `commit()` is called or when the event threshold triggers submission.
+</Note>
+
+## Visibility Change Tracking
+
+Nanolytics monitors the Page Visibility API to track when users switch tabs or minimize the browser:
+
+```javascript
+// From src/index.ts:20
+window.addEventListener('visibilitychange', () => 
+  record(document.hidden ? 'Hidden' : 'Visible')
+);
+```
+
+### How It Works
+
+<Tabs>
+  <Tab title="User Switches Away">
+    When a user switches to another tab or minimizes the browser:
+    ```javascript
+    // document.hidden = true
+    record('Hidden');
+    
+    // Creates event:
+    // { e: 'Hidden', t: 1709481234 }
+    ```
+  </Tab>
+  
+  <Tab title="User Returns">
+    When the user returns to your tab:
+    ```javascript
+    // document.hidden = false
+    record('Visible');
+    
+    // Creates event:
+    // { e: 'Visible', t: 1709481290 }
+    ```
+  </Tab>
+</Tabs>
+
+### Analyzing Engagement
+
+You can use Hidden/Visible events to calculate:
+
+- **Active time**: Time between Visible and Hidden events
+- **Engagement rate**: Ratio of active time to total session time
+- **Distraction patterns**: How often users switch away
+
+```javascript
+// Example: Calculate active session time
+function calculateActiveTime(events) {
+  let totalActive = 0;
+  let lastVisible = null;
+
+  events.forEach(event => {
+    if (event.e === 'Visible' || event.e === 'StartSession') {
+      lastVisible = event.t;
+    } else if (event.e === 'Hidden' && lastVisible) {
+      totalActive += event.t - lastVisible;
+      lastVisible = null;
+    }
+  });
+
+  return totalActive; // seconds
+}
+```
+
+<Tip>
+  Use visibility events to understand true user engagement. A 10-minute session where the user switched away 8 minutes is very different from 10 minutes of active use.
+</Tip>
+
+## The commit() Pattern
+
+The `commit()` function is the heart of session persistence in Nanolytics:
+
+```javascript
+// From src/api.ts:62-65
+export const commit = () => {
+  record('EndSession');
+  localStorage.setItem('events', JSON.stringify([...getSavedEvents(), ...events]));
+};
+```
+
+### What commit() Does
+
+<Steps>
+  <Step title="Record EndSession">
+    Adds an `EndSession` event to the current in-memory events array.
+  </Step>
+  
+  <Step title="Load Saved Events">
+    Retrieves any previously saved events from localStorage using `getSavedEvents()`.
+  </Step>
+  
+  <Step title="Merge and Save">
+    Combines saved events with current session events and writes them back to localStorage.
+  </Step>
+</Steps>
+
+### When commit() is Called
+
+Nanolytics automatically calls `commit()` via the `beforeunload` event:
+
+```javascript
+// From src/index.ts:19
+window.onbeforeunload = commit;
+```
+
+This triggers when:
+
+- User closes the browser tab/window
+- User navigates to a different URL
+- User refreshes the page
+- Browser crashes or closes unexpectedly (best effort)
+
+<Warning>
+  The `beforeunload` event is not 100% reliable, especially on mobile browsers. For critical applications, consider also calling `commit()` periodically or on key user actions.
+</Warning>
+
+## Manual commit() Usage
+
+You can manually call `commit()` in specific scenarios:
+
+### Periodic Commits
+
+Save events at regular intervals:
+
+```javascript
+import { init, commit } from 'nanolytics';
+
+init(submitAnalytics, { maxEventsLimitUntilSubmit: 100 });
+
+// Commit every 5 minutes
+setInterval(() => {
+  commit();
+}, 5 * 60 * 1000);
+```
+
+### Navigation Commits
+
+Commit before route changes in single-page applications:
+
+<CodeGroup>
+
+```javascript React Router
+import { useEffect } from 'react';
+import { useLocation } from 'react-router-dom';
+import { commit } from 'nanolytics';
+
+function App() {
+  const location = useLocation();
+
+  useEffect(() => {
+    // Commit events on route change
+    return () => commit();
+  }, [location]);
+
+  return <div>{/* your app */}</div>;
+}
+```
+
+```javascript Vue Router
+import { watch } from 'vue';
+import { useRoute } from 'vue-router';
+import { commit } from 'nanolytics';
+
+const route = useRoute();
+
+watch(
+  () => route.path,
+  () => {
+    commit();
+  }
+);
+```
+
+```javascript Vanilla JS
+import { commit } from 'nanolytics';
+
+window.addEventListener('popstate', () => {
+  commit();
+});
+
+// For programmatic navigation
+function navigateTo(url) {
+  commit();
+  window.location.href = url;
+}
+```
+
+</CodeGroup>
+
+### Critical Action Commits
+
+Commit after important user actions:
+
+```javascript
+import { record, commit } from 'nanolytics';
+
+function handleCheckout() {
+  record('CheckoutCompleted', 'CheckoutPage', {
+    amount: 99.99,
+    items: 3,
+  });
+  
+  // Immediately commit this critical event
+  commit();
+  
+  // Redirect to confirmation page
+  window.location.href = '/confirmation';
+}
+```
+
+## Event Flow Example
+
+Here's a complete timeline of session events:
+
+```javascript
+// 1. User lands on page
+init(submitAnalytics, { maxEventsLimitUntilSubmit: 100 });
+// → Records: { e: 'StartSession', t: 1709481200 }
+
+// 2. User interacts with the page
+record('ButtonClicked', 'HomePage');
+// → Records: { e: 'ButtonClicked', c: 'HomePage', t: 1709481205 }
+
+// 3. User switches to another tab
+// → Automatic: { e: 'Hidden', t: 1709481220 }
+
+// 4. User returns to tab
+// → Automatic: { e: 'Visible', t: 1709481280 }
+
+// 5. User closes the tab
+// → window.onbeforeunload triggers commit()
+// → Records: { e: 'EndSession', t: 1709481300 }
+// → Saves all events to localStorage
+```
+
+## localStorage Structure
+
+Events are stored in localStorage under the key `'events'`:
+
+```javascript
+// From src/api.ts:34
+export const getSavedEvents = (): Event[] => 
+  JSON.parse(localStorage.getItem('events') || '[]');
+
+// From src/api.ts:64
+localStorage.setItem('events', JSON.stringify([...getSavedEvents(), ...events]));
+```
+
+### Storage Format
+
+```json
+[
+  {
+    "e": "StartSession",
+    "t": 1709481200
+  },
+  {
+    "e": "ButtonClicked",
+    "c": "HomePage",
+    "t": 1709481205
+  },
+  {
+    "e": "Hidden",
+    "t": 1709481220
+  },
+  {
+    "e": "Visible",
+    "t": 1709481280
+  },
+  {
+    "e": "EndSession",
+    "t": 1709481300
+  }
+]
+```
+
+<Note>
+  Each `commit()` appends current session events to existing saved events. This allows multiple sessions to accumulate before submission.
+</Note>
+
+## Session Testing
+
+From the test suite, here's how session tracking works:
+
+```javascript
+// From src/index.test.ts:34-40
+it('should initialize and start a session', () => {
+  const submitFn = vi.fn();
+  init(submitFn, { maxEventsLimitUntilSubmit: 100 });
+
+  const events = getEvents();
+  expect(events).toEqual([{ e: 'StartSession', t: expect.any(Number) }]);
+});
+
+// From src/index.test.ts:65-72
+it('should commit events to localStorage and end session', () => {
+  record('Event1');
+  commit();
+
+  const savedEvents = getSavedEvents();
+  expect(savedEvents).toHaveLength(2); // Event1 + EndSession
+  expect(savedEvents[1].e).toBe('EndSession');
+});
+```
+
+## Advanced Session Patterns
+
+### Session Duration Tracking
+
+Calculate how long users spend on your site:
+
+```javascript
+import { init, record } from 'nanolytics';
+
+const sessionStart = Date.now();
+
+init(submitAnalytics, { maxEventsLimitUntilSubmit: 100 });
+
+// On beforeunload, add session duration
+window.addEventListener('beforeunload', () => {
+  const duration = Math.floor((Date.now() - sessionStart) / 1000);
+  record('SessionEnded', undefined, { duration });
+});
+```
+
+### Multi-Tab Session Tracking
+
+Track when users have multiple tabs open:
+
+```javascript
+import { init, record } from 'nanolytics';
+
+const tabId = `tab-${Date.now()}-${Math.random()}`;
+
+init(submitAnalytics, { maxEventsLimitUntilSubmit: 100 });
+
+// Track which tab events come from
+const originalRecord = record;
+window.record = (event, context, moreContext = {}) => {
+  originalRecord(event, context, { ...moreContext, tabId });
+};
+```
+
+### Session Recovery
+
+Handle sessions that were interrupted:
+
+```javascript
+import { init, getSavedEvents, record } from 'nanolytics';
+
+// Check if previous session ended properly
+const lastEvents = getSavedEvents();
+const lastEvent = lastEvents[lastEvents.length - 1];
+
+if (lastEvent && lastEvent.e !== 'EndSession') {
+  // Previous session was interrupted
+  record('SessionRecovered', undefined, {
+    lastEventTime: lastEvent.t,
+    wasInterrupted: true,
+  });
+}
+
+init(submitAnalytics, { maxEventsLimitUntilSubmit: 100 });
+```
+
+## Performance Considerations
+
+<Steps>
+  <Step title="Memory Usage">
+    Events are stored in-memory until `commit()` is called. For long sessions with many events, this can grow. Consider calling `commit()` periodically.
+  </Step>
+  
+  <Step title="localStorage Limits">
+    localStorage typically has a 5-10MB limit. Monitor your event count and size:
+    ```javascript
+    import { getSavedEvents } from 'nanolytics';
+    
+    const events = getSavedEvents();
+    const sizeInBytes = new Blob([JSON.stringify(events)]).size;
+    console.log(`Events size: ${sizeInBytes / 1024}KB`);
+    ```
+  </Step>
+  
+  <Step title="beforeunload Reliability">
+    The `beforeunload` event may not fire in all scenarios (crashes, force-quit). For critical data, use periodic commits or the Beacon API:
+    ```javascript
+    import { getEvents, getUserInfo } from 'nanolytics';
+    
+    window.addEventListener('visibilitychange', () => {
+      if (document.hidden) {
+        const events = getEvents();
+        navigator.sendBeacon('/analytics', JSON.stringify({
+          state: getUserInfo(),
+          data: events,
+        }));
+      }
+    });
+    ```
+  </Step>
+</Steps>
+
+<Tip>
+  For the most reliable session tracking, combine automatic tracking with manual `commit()` calls at strategic points in your application flow.
+</Tip>
+
+## Cleaning Up Sessions
+
+After successful submission, events are automatically deleted:
+
+```javascript
+// From src/index.ts:28
+submitFn(getUserInfo(), savedEvents).then(deleteSavedEvents);
+```
+
+You can also manually clear events:
+
+```javascript
+import { deleteSavedEvents, clearEvents } from 'nanolytics';
+
+// Clear localStorage
+deleteSavedEvents();
+
+// Clear in-memory events
+clearEvents();
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Custom Submission" icon="upload" href="/guides/custom-submission">
+    Learn how to submit session data to your backend
+  </Card>
+  <Card title="Event Context" icon="tag" href="/guides/event-context">
+    Add rich context to your session events
+  </Card>
+</CardGroup>

@@ -1,0 +1,89 @@
+---
+title: "getEvents"
+description: "Retrieves the current session's events from memory"
+---
+
+## Function Signature
+
+```typescript
+getEvents(): Event[]
+```
+
+Retrieves a copy of the current session's events from memory. These are events that have been recorded but not yet committed to localStorage.
+
+## Parameters
+
+This function takes no parameters.
+
+## Return Value
+
+<ResponseField name="events" type="Event[]">
+  An array containing copies of all events recorded in the current session.
+  
+  **Event Type:**
+  ```typescript
+  type Event = {
+    e: string;              // event name
+    t: number;              // timestamp (Unix seconds)
+    c?: string;             // optional context
+    [key: string]: any;     // additional context data
+  }
+  ```
+</ResponseField>
+
+## Usage Examples
+
+### Get Current Events
+
+```javascript
+import { getEvents } from 'nanolytics';
+
+const currentEvents = getEvents();
+console.log(`Recorded ${currentEvents.length} events this session`);
+```
+
+### Display Events for Debugging
+
+```javascript
+import { record, getEvents } from 'nanolytics';
+
+record('PageViewed', '/dashboard');
+record('ButtonClicked', 'ExportButton');
+
+const events = getEvents();
+events.forEach(event => {
+  console.log(`${event.e} at ${new Date(event.t * 1000).toISOString()}`);
+});
+```
+
+### Check Event Count
+
+```javascript
+import { getEvents, commit } from 'nanolytics';
+
+// Commit when reaching a certain threshold
+const checkAndCommit = () => {
+  const events = getEvents();
+  if (events.length >= 50) {
+    commit();
+  }
+};
+```
+
+### Filter Specific Events
+
+```javascript
+import { getEvents } from 'nanolytics';
+
+// Find all error events
+const events = getEvents();
+const errorEvents = events.filter(e => e.e.includes('Error'));
+console.log(`Found ${errorEvents.length} error events`);
+```
+
+## Notes
+
+- Returns a copy of the events array using `slice()`, so modifying the returned array won't affect the internal state
+- Only includes events from the current session (since page load or last `clearEvents()` call)
+- Does not include events that were previously committed to localStorage - use `getSavedEvents()` for those
+- Events are stored in chronological order based on when `record()` was called

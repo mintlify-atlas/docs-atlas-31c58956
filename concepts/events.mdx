@@ -1,0 +1,120 @@
+---
+title: Events
+description: Understanding the Event type structure and how events are created in Nanolytics
+---
+
+## Event structure
+
+The `Event` type is the core data structure in Nanolytics. Each event represents a user action or system occurrence with a timestamp and optional metadata.
+
+### Type definition
+
+From `src/types.ts:1`:
+
+```typescript
+export type Event = {
+    [key: string]: any; // additional context or data
+    c?: string; // optional context
+    e: string; // event name
+    t: number; // timestamp (seconds)
+};
+```
+
+### Required fields
+
+<ParamField path="e" type="string" required>
+  The event name that identifies what action or occurrence is being tracked.
+</ParamField>
+
+<ParamField path="t" type="number" required>
+  Unix timestamp in seconds when the event was created.
+</ParamField>
+
+### Optional fields
+
+<ParamField path="c" type="string">
+  Optional context string, typically used to identify the screen or component where the event occurred.
+</ParamField>
+
+<ParamField path="[key: string]" type="any">
+  Additional custom fields can be added to capture extra metadata specific to your use case.
+</ParamField>
+
+## Creating events
+
+Events are created automatically when you call the `record()` function. The library handles timestamp generation internally.
+
+From `src/api.ts:11`:
+
+```typescript
+const createEvent = (e: string): Event => ({
+    e,
+    t: Math.floor(Date.now() / 1000),
+});
+```
+
+## Recording events
+
+The `record()` function is the primary way to track events in your application.
+
+### Basic usage
+
+```typescript
+import { record } from 'nanolytics';
+
+// Simple event
+record('ButtonClicked');
+```
+
+### With context
+
+```typescript
+// Event with context (screen/component)
+record('ButtonClicked', 'HomePage');
+```
+
+### With additional data
+
+From `src/api.ts:46`:
+
+```typescript
+record('ButtonClicked', 'HomePage', { userId: '123' });
+```
+
+This creates an event like:
+
+```json
+{
+  "e": "ButtonClicked",
+  "c": "HomePage",
+  "t": 1709481600,
+  "userId": "123"
+}
+```
+
+## Implementation details
+
+When you record an event, the library:
+
+1. Creates a base event with the name and current timestamp
+2. Merges any additional context fields you provide
+3. Adds the optional context (`c`) field if specified
+4. Pushes the event to the in-memory event array
+
+From `src/api.ts:46`:
+
+```typescript
+export const record = (event: string, context?: string, moreContext: Record<string, any> = {}) => {
+    const stat: Event = { ...createEvent(event), ...moreContext };
+
+    if (context) {
+        stat.c = context;
+    }
+
+    events.push(stat);
+};
+```
+
+<Note>
+Timestamps are stored in seconds (not milliseconds) to reduce payload size.
+</Note>

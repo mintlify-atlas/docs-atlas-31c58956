@@ -1,0 +1,62 @@
+---
+title: Introduction
+description: A minimalistic, zero-dependency client-side analytics tracking library that's tiny, fast, and easy to integrate
+---
+
+## What is Nanolytics?
+
+Nanolytics is a minimalistic, zero-dependency lightweight client-side analytics tracking library. It allows you to capture events, store them locally, and submit them to a server after a predefined threshold. The library focuses on simplicity and efficiency, allowing developers to easily integrate event tracking into their applications with minimal overhead.
+
+## Key features
+
+<CardGroup cols={2}>
+  <Card title="Zero dependencies" icon="circle-check">
+    Completely standalone with no external dependencies, keeping your bundle size minimal
+  </Card>
+  <Card title="Event batching" icon="layer-group">
+    Stores events in localStorage and submits them periodically or based on event count
+  </Card>
+  <Card title="localStorage persistence" icon="database">
+    Events are saved locally and survive page refreshes until successfully submitted
+  </Card>
+  <Card title="Flexible submission" icon="plug">
+    You provide custom event submission logic through a callback using any HTTP client
+  </Card>
+  <Card title="Session tracking" icon="clock">
+    Automatically tracks session start/end and page visibility changes
+  </Card>
+  <Card title="TypeScript support" icon="code">
+    Written in TypeScript with full type definitions included
+  </Card>
+</CardGroup>
+
+## Why use Nanolytics?
+
+### Tiny bundle size
+
+Nanolytics is incredibly lightweight. The entire library adds minimal overhead to your application, making it perfect for projects where every kilobyte counts. With zero dependencies, you won't be pulling in unnecessary code.
+
+### Simple and focused
+
+Unlike heavyweight analytics platforms, Nanolytics does one thing well: capturing and batching events. You maintain full control over how and where events are submitted, making it easy to integrate with any backend API.
+
+### Works offline
+
+Events are stored in localStorage, so even if your users lose connectivity, their interactions are captured and will be submitted when you call your submission function.
+
+## Get started
+
+<CardGroup cols={2}>
+  <Card title="Installation" icon="download" href="/installation">
+    Install Nanolytics via npm, yarn, or pnpm
+  </Card>
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Get up and running in minutes with a step-by-step tutorial
+  </Card>
+  <Card title="API reference" icon="book" href="/api/init">
+    Explore the complete API documentation
+  </Card>
+  <Card title="Examples" icon="code" href="/examples/basic-tracking">
+    See real-world usage examples and patterns
+  </Card>
+</CardGroup>

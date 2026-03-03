@@ -1,0 +1,415 @@
+---
+title: Basic Tracking
+description: Simple vanilla JavaScript examples for tracking user interactions with Nanolytics
+---
+
+## Overview
+
+Nanolytics makes it easy to track user interactions in vanilla JavaScript applications. This guide shows you how to initialize the library and track common events like button clicks, form submissions, and page views.
+
+## Installation
+
+```bash
+npm install nanolytics
+# or
+yarn add nanolytics
+# or
+pnpm i nanolytics
+```
+
+## Basic Setup
+
+### Initialize Nanolytics
+
+First, initialize Nanolytics with a submission function that sends events to your backend:
+
+```javascript
+import { init, record } from 'nanolytics';
+
+// Define your submission function
+const submitAnalytics = async (userInfo, events) => {
+  const response = await fetch('https://api.example.com/analytics', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ 
+      state: userInfo, 
+      data: events 
+    }),
+  });
+  
+  if (!response.ok) {
+    throw new Error('Analytics submission failed');
+  }
+  
+  return response.json();
+};
+
+// Initialize with custom threshold
+init(submitAnalytics, { maxEventsLimitUntilSubmit: 150 });
+```
+
+<Note>
+The library automatically triggers submission after 100 events by default. You can customize this with the `maxEventsLimitUntilSubmit` option.
+</Note>
+
+## Tracking Events
+
+### Simple Events
+
+Track basic events without any context:
+
+```javascript
+import { record } from 'nanolytics';
+
+// Track a simple button click
+record('ButtonClicked');
+
+// Track page visibility
+record('PageVisible');
+
+// Track session start (automatically tracked by init)
+record('StartSession');
+```
+
+### Events with Context
+
+Add context to provide more information about where the event occurred:
+
+```javascript
+// Record event with page/component context
+record('ButtonClicked', 'HomePage');
+
+// Record with screen name
+record('ModalOpened', 'SettingsPage');
+
+// Record navigation events
+record('NavigateTo', 'ProfilePage');
+```
+
+### Events with Additional Data
+
+Include extra metadata with your events:
+
+```javascript
+// Record with additional context data
+record('ProductViewed', 'ShopPage', { 
+  productId: '12345',
+  category: 'electronics',
+  price: 299.99
+});
+
+// Record user actions with details
+record('SearchPerformed', 'Header', { 
+  query: 'wireless headphones',
+  resultCount: 42
+});
+
+// Track feature usage
+record('FeatureUsed', 'Dashboard', { 
+  feature: 'export',
+  format: 'csv'
+});
+```
+
+## Common Tracking Patterns
+
+### Button Clicks
+
+<CodeGroup>
+
+```javascript Vanilla JS
+const button = document.getElementById('signup-button');
+
+button.addEventListener('click', () => {
+  record('ButtonClicked', 'HomePage', { 
+    button: 'signup',
+    userId: getCurrentUserId()
+  });
+});
+```
+
+```javascript Query Selector
+document.querySelectorAll('.track-click').forEach(button => {
+  button.addEventListener('click', (e) => {
+    record('ButtonClicked', window.location.pathname, { 
+      buttonText: e.target.textContent,
+      buttonId: e.target.id
+    });
+  });
+});
+```
+
+</CodeGroup>
+
+### Form Submissions
+
+```javascript
+const form = document.getElementById('contact-form');
+
+form.addEventListener('submit', (e) => {
+  e.preventDefault();
+  
+  // Track form submission
+  record('FormSubmitted', 'ContactPage', { 
+    formId: 'contact-form',
+    fields: ['name', 'email', 'message'],
+    referrer: document.referrer
+  });
+  
+  // Submit form data
+  // ...
+});
+```
+
+### Page Views
+
+```javascript
+// Track initial page load
+window.addEventListener('load', () => {
+  record('PageView', window.location.pathname, {
+    title: document.title,
+    referrer: document.referrer,
+    timestamp: new Date().toISOString()
+  });
+});
+
+// Track navigation in Single Page Applications
+window.addEventListener('popstate', () => {
+  record('PageView', window.location.pathname, {
+    title: document.title,
+    type: 'navigation'
+  });
+});
+```
+
+### User Interactions
+
+<CodeGroup>
+
+```javascript Links
+document.querySelectorAll('a').forEach(link => {
+  link.addEventListener('click', (e) => {
+    record('LinkClicked', window.location.pathname, { 
+      href: e.target.href,
+      text: e.target.textContent,
+      external: !e.target.href.includes(window.location.hostname)
+    });
+  });
+});
+```
+
+```javascript Videos
+const video = document.getElementById('promo-video');
+
+video.addEventListener('play', () => {
+  record('VideoPlayed', 'LandingPage', { 
+    videoId: video.id,
+    duration: video.duration
+  });
+});
+
+video.addEventListener('ended', () => {
+  record('VideoCompleted', 'LandingPage', { 
+    videoId: video.id
+  });
+});
+```
+
+```javascript Scroll Depth
+let maxScroll = 0;
+
+window.addEventListener('scroll', () => {
+  const scrollPercent = Math.round(
+    (window.scrollY / (document.body.scrollHeight - window.innerHeight)) * 100
+  );
+  
+  if (scrollPercent > maxScroll && scrollPercent % 25 === 0) {
+    maxScroll = scrollPercent;
+    record('ScrollDepth', window.location.pathname, { 
+      depth: scrollPercent
+    });
+  }
+});
+```
+
+</CodeGroup>
+
+## Automatic Event Tracking
+
+Nanolytics automatically tracks certain events when initialized:
+
+```javascript
+import { init } from 'nanolytics';
+
+// Automatically tracks:
+// - StartSession (on init)
+// - Hidden (when tab becomes hidden)
+// - Visible (when tab becomes visible)
+// - EndSession (on window close, via commit)
+
+init(submitAnalytics, { maxEventsLimitUntilSubmit: 100 });
+```
+
+### Page Visibility Tracking
+
+The library automatically tracks when users switch tabs or hide the page:
+
+```javascript
+// These events are tracked automatically:
+// - document.hidden = true → record('Hidden')
+// - document.hidden = false → record('Visible')
+```
+
+### Session End Tracking
+
+```javascript
+import { commit } from 'nanolytics';
+
+// Automatically set up by init():
+window.onbeforeunload = commit;
+
+// You can also manually trigger commit:
+const logoutButton = document.getElementById('logout');
+logoutButton.addEventListener('click', () => {
+  commit(); // Records 'EndSession' and saves to localStorage
+  // Proceed with logout...
+});
+```
+
+## Event Structure
+
+All events are stored with the following structure:
+
+```typescript
+type Event = {
+  e: string;           // Event name
+  t: number;           // Timestamp (Unix seconds)
+  c?: string;          // Optional context
+  [key: string]: any;  // Additional custom data
+};
+```
+
+### Example Event Objects
+
+```javascript
+// Simple event
+{ 
+  e: 'ButtonClicked', 
+  t: 1709481600 
+}
+
+// Event with context
+{ 
+  e: 'FormSubmitted', 
+  t: 1709481600,
+  c: 'SignUpPage' 
+}
+
+// Event with context and additional data
+{ 
+  e: 'ProductPurchased', 
+  t: 1709481600,
+  c: 'CheckoutPage',
+  productId: '12345',
+  price: 99.99,
+  currency: 'USD'
+}
+```
+
+## Managing Events
+
+### Retrieve Current Events
+
+```javascript
+import { getEvents } from 'nanolytics';
+
+// Get current session events (in memory)
+const currentEvents = getEvents();
+console.log(`Session has ${currentEvents.length} events`);
+```
+
+### Retrieve Saved Events
+
+```javascript
+import { getSavedEvents } from 'nanolytics';
+
+// Get events from localStorage
+const savedEvents = getSavedEvents();
+console.log(`Storage has ${savedEvents.length} events`);
+```
+
+### Clear Events
+
+```javascript
+import { clearEvents, deleteSavedEvents } from 'nanolytics';
+
+// Clear current session events (in memory)
+clearEvents();
+
+// Delete saved events from localStorage
+deleteSavedEvents();
+```
+
+## Complete Example
+
+Here's a complete example tracking multiple interactions:
+
+```html
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Analytics Demo</title>
+</head>
+<body>
+  <button id="cta-button">Sign Up</button>
+  <form id="newsletter-form">
+    <input type="email" name="email" required>
+    <button type="submit">Subscribe</button>
+  </form>
+
+  <script type="module">
+    import { init, record, commit } from 'nanolytics';
+
+    // Initialize analytics
+    const submitAnalytics = async (userInfo, events) => {
+      await fetch('/api/analytics', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ state: userInfo, data: events })
+      });
+    };
+
+    init(submitAnalytics, { maxEventsLimitUntilSubmit: 150 });
+
+    // Track button clicks
+    document.getElementById('cta-button').addEventListener('click', () => {
+      record('CTAClicked', 'HomePage', { button: 'signup' });
+    });
+
+    // Track form submissions
+    document.getElementById('newsletter-form').addEventListener('submit', (e) => {
+      e.preventDefault();
+      record('NewsletterSignup', 'HomePage', {
+        email: e.target.email.value
+      });
+    });
+
+    // Commit on page exit
+    window.addEventListener('beforeunload', commit);
+  </script>
+</body>
+</html>
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="React Integration" icon="react" href="/examples/react-integration">
+    Learn how to use Nanolytics in React applications
+  </Card>
+  <Card title="Custom Backend" icon="server" href="/examples/custom-backend">
+    Implement custom submission functions for different backends
+  </Card>
+</CardGroup>

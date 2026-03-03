@@ -1,0 +1,102 @@
+---
+title: "record"
+description: "Records a new event with optional context and additional data"
+---
+
+## Function Signature
+
+```typescript
+record(event: string, context?: string, moreContext?: Record<string, any>): void
+```
+
+Records a new event with a timestamp and optional context information. Events are stored in memory until they are committed to localStorage or submitted to the server.
+
+## Parameters
+
+<ParamField path="event" type="string" required>
+  The event name to record (e.g., 'ButtonClicked', 'PageViewed', 'FormSubmitted').
+</ParamField>
+
+<ParamField path="context" type="string">
+  Optional context string representing additional information about where or how the event occurred (e.g., screen name, component name, or page identifier).
+</ParamField>
+
+<ParamField path="moreContext" type="Record<string, any>" default="{}">
+  Additional data to record with the event as key-value pairs. This can include any custom properties relevant to the event.
+</ParamField>
+
+## Return Value
+
+<ResponseField name="void" type="void">
+  This function does not return a value.
+</ResponseField>
+
+## Event Structure
+
+Each recorded event creates an object with the following structure:
+
+```typescript
+type Event = {
+  e: string;              // event name
+  t: number;              // timestamp (Unix seconds)
+  c?: string;             // optional context
+  [key: string]: any;     // additional context from moreContext
+}
+```
+
+## Usage Examples
+
+### Simple Event
+
+```javascript
+import { record } from 'nanolytics';
+
+// Record a simple button click
+record('ButtonClicked');
+```
+
+### Event with Context
+
+```javascript
+// Record an event with context string
+record('FormatByRule', 'ruleName', { from: 'Freewrite' });
+```
+
+### Event with Additional Data
+
+```javascript
+// Track button click with component context
+const handleButtonClick = () => {
+  record('ButtonClicked', 'HomePage');
+};
+
+// Track form submission with metadata
+record('FormSubmitted', 'SignUpForm', { 
+  referrer: 'Homepage',
+  userId: '123'
+});
+```
+
+### Tracking User Actions
+
+```javascript
+// Track navigation
+record('PageViewed', '/dashboard', { 
+  previousPage: '/home',
+  timeSpent: 45 
+});
+
+// Track feature usage
+record('FeatureUsed', 'ExportData', {
+  format: 'PDF',
+  size: '2.3MB'
+});
+```
+
+## Notes
+
+- Events are stored in memory until `commit()` is called or the window closes
+- Timestamps are automatically generated in Unix seconds format
+- The `context` parameter is stored in the `c` field of the event object
+- All properties from `moreContext` are spread directly onto the event object
+- Events are automatically committed when the page closes via the `beforeunload` event

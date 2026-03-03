@@ -1,0 +1,77 @@
+---
+title: "clearEvents"
+description: "Clears all events in the current session from memory"
+---
+
+## Function Signature
+
+```typescript
+clearEvents(): void
+```
+
+Clears all events stored in memory for the current session. This does not affect events that have been committed to localStorage.
+
+## Parameters
+
+This function takes no parameters.
+
+## Return Value
+
+<ResponseField name="void" type="void">
+  This function does not return a value.
+</ResponseField>
+
+## Usage Examples
+
+### Clear After Submission
+
+```javascript
+import { clearEvents, getEvents, getUserInfo } from 'nanolytics';
+
+const submitAnalytics = async (userInfo, events) => {
+  await fetch('/api/analytics', {
+    method: 'POST',
+    body: JSON.stringify({ state: userInfo, data: events })
+  });
+};
+
+// Submit and clear current session
+const events = getEvents();
+const userInfo = getUserInfo();
+await submitAnalytics(userInfo, events);
+clearEvents();
+```
+
+### Clear on User Logout
+
+```javascript
+import { clearEvents } from 'nanolytics';
+
+const handleLogout = () => {
+  // Clear analytics before logout
+  clearEvents();
+  
+  // Proceed with logout
+  window.location.href = '/login';
+};
+```
+
+### Reset Session
+
+```javascript
+import { clearEvents, record } from 'nanolytics';
+
+// Start a fresh analytics session
+const resetSession = () => {
+  clearEvents();
+  record('SessionReset');
+};
+```
+
+## Notes
+
+- Only clears events from memory (current session)
+- Does not affect events saved in localStorage - use `deleteSavedEvents()` for that
+- Implementation sets the array length to 0, which efficiently clears the internal events array
+- Events cleared with this function cannot be recovered
+- This is useful when you want to start tracking a new session without committing previous events

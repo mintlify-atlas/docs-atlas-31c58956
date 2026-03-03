@@ -1,80 +1,160 @@
 ---
-title: "Quickstart"
-description: "Start building awesome documentation in minutes"
+title: Quickstart
+description: Get started with Nanolytics in minutes by following this step-by-step tutorial
 ---
 
-## Get started in three steps
+This guide will walk you through setting up Nanolytics and tracking your first events.
 
-Get your documentation site running locally and make your first customization.
+<Steps>
+  <Step title="Install the package">
+    First, install Nanolytics using your preferred package manager:
 
-### Step 1: Set up your local environment
+    ```bash
+    npm install nanolytics
+    ```
 
-<AccordionGroup>
-  <Accordion icon="copy" title="Clone your docs locally">
-    During the onboarding process, you created a GitHub repository with your docs content if you didn't already have one. You can find a link to this repository in your [dashboard](https://dashboard.mintlify.com).
-    
-    To clone the repository locally so that you can make and preview changes to your docs, follow the [Cloning a repository](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository) guide in the GitHub docs.
-  </Accordion>
-  <Accordion icon="rectangle-terminal" title="Start the preview server">
-    1. Install the Mintlify CLI: `npm i -g mint`
-    2. Navigate to your docs directory and run: `mint dev`
-    3. Open `http://localhost:3000` to see your docs live!
-    
-    <Tip>Your preview updates automatically as you edit files.</Tip>
-  </Accordion>
-</AccordionGroup>
+    <Info>
+      Make sure you have Node.js >= 20.0.0 installed.
+    </Info>
+  </Step>
 
-### Step 2: Deploy your changes
+  <Step title="Initialize with a submission function">
+    Create a submission function that will handle sending events to your analytics server. This function receives user information and an array of events, and should return a Promise.
 
-<AccordionGroup>
-  <Accordion icon="github" title="Install our GitHub app">
-    Install the Mintlify GitHub app from your [dashboard](https://dashboard.mintlify.com/settings/organization/github-app).
-    
-    Our GitHub app automatically deploys your changes to your docs site, so you don't need to manage deployments yourself.
-</Accordion>
-<Accordion icon="palette" title="Update your site name and colors">
-    For a first change, let's update the name and colors of your docs site.
+    ```javascript
+    import { init } from 'nanolytics';
 
-    1. Open `docs.json` in your editor.
-    2. Change the `"name"` field to your project name.
-    3. Update the `"colors"` to match your brand.
-    4. Save and see your changes instantly at `http://localhost:3000`.
+    // Define your submission function
+    const submitAnalytics = async (userInfo, events) => {
+      const response = await fetch('/api/analytics', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ state: userInfo, data: events })
+      });
+      return response.json();
+    };
 
-    <Tip>Try changing the primary color to see an immediate difference!</Tip>
-  </Accordion>
-</AccordionGroup>
+    // Initialize Nanolytics
+    init(submitAnalytics, { maxEventsLimitUntilSubmit: 150 });
+    ```
 
-### Step 3: Go live
+    <Note>
+      By default, Nanolytics will automatically trigger submission after 100 events. You can customize this with the `maxEventsLimitUntilSubmit` option.
+    </Note>
 
-<Accordion icon="rocket" title="Publish your docs">
-  1. Commit and push your changes.
-  2. Your docs will update and be live in moments!
-</Accordion>
+    The `submitAnalytics` function receives:
+    - `userInfo`: An object containing `language`, `platform`, and `userAgent` from the browser
+    - `events`: An array of event objects with event name (`e`), timestamp (`t`), optional context (`c`), and any additional data
+
+    <Tip>
+      A successful response (200 OK) will cause the library to flush its localStorage store.
+    </Tip>
+  </Step>
+
+  <Step title="Record some events">
+    Use the `record()` function to track user interactions and events throughout your application:
+
+    ```javascript
+    import { record } from 'nanolytics';
+
+    // Record a simple event
+    record('ButtonClicked');
+
+    // Record an event with context
+    record('FormatByRule', 'ruleName', { from: 'Freewrite' });
+
+    // Track form submission with additional context
+    record('FormSubmitted', 'SignUpForm', { referrer: 'Homepage' });
+
+    // Track user interactions
+    const handleButtonClick = () => {
+      record('ButtonClicked', 'HomePage');
+    };
+    ```
+
+    Each event is automatically timestamped and stored in memory. Events accumulate in localStorage and will be submitted when:
+    - The number of events exceeds your configured threshold (default: 100)
+    - The user closes the page or switches tabs
+    - You manually call the `commit()` function
+  </Step>
+
+  <Step title="See it in action">
+    Nanolytics automatically handles session tracking and event persistence for you:
+
+    ```javascript
+    import { init, record, commit } from 'nanolytics';
+
+    // Initialize once at app startup
+    const submitAnalytics = async (userInfo, events) => {
+      const response = await fetch('/api/analytics', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ state: userInfo, data: events })
+      });
+      return response.json();
+    };
+
+    init(submitAnalytics, { maxEventsLimitUntilSubmit: 150 });
+
+    // The library automatically records a 'StartSession' event
+    // It also tracks visibility changes (Hidden/Visible events)
+
+    // Track user actions throughout your app
+    record('StartSession');
+    record('ButtonClicked', 'HomePage');
+    record('FormSubmitted', 'SignUpForm', { referrer: 'Homepage' });
+
+    // Optionally commit events before the user leaves
+    window.onbeforeunload = () => {
+      commit(); // Saves events to localStorage
+    };
+    ```
+
+    <Warning>
+      Events are stored in localStorage under the key `'events'`. Make sure this key doesn't conflict with other parts of your application.
+    </Warning>
+
+    <Tip>
+      The library automatically sets up `window.onbeforeunload` to call `commit()`, so events are saved even if the user closes the page unexpectedly.
+    </Tip>
+  </Step>
+</Steps>
+
+## What happens next?
+
+1. Events are stored in memory as you call `record()`
+2. When the threshold is reached, your `submitAnalytics` function is called automatically
+3. On successful submission (200 OK), events are cleared from localStorage
+4. When the user leaves the page, remaining events are committed to localStorage
+5. On the next visit, if saved events exceed the threshold, they're submitted automatically after a 3-second delay
+
+## Advanced usage
+
+You can use any HTTP client for submissions. Here's an example with axios:
+
+```javascript
+import axios from 'axios';
+import { init } from 'nanolytics';
+
+const submitAnalytics = async (userInfo, events) => {
+  try {
+    const response = await axios.put('/analytics-endpoint', {
+      state: userInfo,
+      data: events
+    });
+    return response.data;
+  } catch (error) {
+    console.error('Analytics submission failed:', error);
+  }
+};
+
+init(submitAnalytics);
+```
 
 ## Next steps
 
-Now that you have your docs running, explore these key features:
+Now that you have Nanolytics up and running:
 
-<CardGroup cols={2}>
-
-<Card title="Write Content" icon="pen-to-square" href="/essentials/markdown">
-  Learn MDX syntax and start writing your documentation.
-</Card>
-
-<Card title="Customize style" icon="palette" href="/essentials/settings">
-  Make your docs match your brand perfectly.
-</Card>
-
-<Card title="Add code examples" icon="square-code" href="/essentials/code">
-  Include syntax-highlighted code blocks.
-</Card>
-
-<Card title="API documentation" icon="code" href="/api-reference/introduction">
-  Auto-generate API docs from OpenAPI specs.
-</Card>
-
-</CardGroup>
-
-<Note>
-  **Need help?** See our [full documentation](https://mintlify.com/docs) or join our [community](https://mintlify.com/community).
-</Note>
+- Explore the [API reference](/api/init) to learn about all available functions
+- Check out [Examples](/examples/basic-tracking) for more usage patterns
+- Learn about the [Event structure](/concepts/events) to understand the data format

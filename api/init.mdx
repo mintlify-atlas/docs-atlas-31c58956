@@ -1,0 +1,77 @@
+---
+title: "init"
+description: "Initializes the analytics tracking system with event listeners and submission logic"
+---
+
+## Function Signature
+
+```typescript
+init(submitFn: SubmitAnalyticsCallback, options: InitOptions): void
+```
+
+Initializes the analytics tracking system. Sets up event listeners for session tracking and visibility changes, and checks if saved events exceed the submission threshold. If the threshold is exceeded, it triggers the provided submission function.
+
+## Parameters
+
+<ParamField path="submitFn" type="SubmitAnalyticsCallback" required>
+  A callback function to handle the submission of analytics data to your server.
+  
+  **Type Definition:**
+  ```typescript
+  type SubmitAnalyticsCallback = (userInfo: Record<string, any>, events: Event[]) => Promise<void>
+  ```
+  
+  The callback receives:
+  - `userInfo`: Object containing user browser information (language, platform, userAgent)
+  - `events`: Array of Event objects to be submitted
+</ParamField>
+
+<ParamField path="options" type="InitOptions" required>
+  Configuration options for the initialization.
+  
+  <ParamField path="options.maxEventsLimitUntilSubmit" type="number" default="100">
+    Maximum number of events before triggering automatic submission. When saved events exceed this threshold, the library will automatically call the submit function after a 3-second delay.
+  </ParamField>
+</ParamField>
+
+## Return Value
+
+<ResponseField name="void" type="void">
+  This function does not return a value.
+</ResponseField>
+
+## Behavior
+
+When `init()` is called, it automatically:
+
+1. Sets up a `beforeunload` event listener to save events when the window closes
+2. Adds a `visibilitychange` listener to track when users hide/show the page
+3. Records a `StartSession` event
+4. Checks if saved events in localStorage exceed the threshold
+5. If threshold is exceeded, schedules submission after a 3-second delay
+
+## Usage Example
+
+```javascript
+import { init } from 'nanolytics';
+
+// Define your submission function
+const submitAnalytics = async (userInfo, events) => {
+  const response = await fetch('/api/analytics', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ state: userInfo, data: events })
+  });
+  return response.json();
+};
+
+// Initialize with custom threshold
+init(submitAnalytics, { maxEventsLimitUntilSubmit: 150 });
+```
+
+## Notes
+
+- Call `init()` once at the start of your application
+- A successful response (200 OK) from your submit function will cause the library to flush the event store
+- The 3-second delay on submission provides a smoother user experience
+- Session tracking events (`StartSession`, `Hidden`, `Visible`) are automatically recorded

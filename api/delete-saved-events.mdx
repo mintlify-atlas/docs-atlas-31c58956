@@ -1,0 +1,103 @@
+---
+title: "deleteSavedEvents"
+description: "Deletes all saved events from localStorage"
+---
+
+## Function Signature
+
+```typescript
+deleteSavedEvents(): void
+```
+
+Deletes all events stored in localStorage. This is typically called after successfully submitting events to the server.
+
+## Parameters
+
+This function takes no parameters.
+
+## Return Value
+
+<ResponseField name="void" type="void">
+  This function does not return a value.
+</ResponseField>
+
+## Usage Examples
+
+### After Successful Submission
+
+```javascript
+import { deleteSavedEvents, getSavedEvents, getUserInfo } from 'nanolytics';
+
+const submitAnalytics = async (userInfo, events) => {
+  const response = await fetch('/api/analytics', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ state: userInfo, data: events })
+  });
+  
+  if (response.ok) {
+    // Clear saved events after successful submission
+    deleteSavedEvents();
+  }
+};
+
+// Submit saved events
+const savedEvents = getSavedEvents();
+const userInfo = getUserInfo();
+await submitAnalytics(userInfo, savedEvents);
+```
+
+### Clear All Stored Data
+
+```javascript
+import { deleteSavedEvents, clearEvents } from 'nanolytics';
+
+const clearAllAnalytics = () => {
+  // Clear both saved and in-memory events
+  deleteSavedEvents();
+  clearEvents();
+  console.log('All analytics data cleared');
+};
+```
+
+### Reset on User Request
+
+```javascript
+import { deleteSavedEvents } from 'nanolytics';
+
+const handlePrivacyReset = () => {
+  // User requested to delete their analytics data
+  deleteSavedEvents();
+  alert('Analytics data has been deleted');
+};
+```
+
+### Automatic Cleanup in Init
+
+```javascript
+import { init, deleteSavedEvents, getUserInfo } from 'nanolytics';
+
+const submitAnalytics = async (userInfo, events) => {
+  try {
+    const response = await fetch('/api/analytics', {
+      method: 'POST',
+      body: JSON.stringify({ state: userInfo, data: events })
+    });
+    return response.json();
+  } catch (error) {
+    console.error('Analytics submission failed:', error);
+  }
+};
+
+// The init function calls deleteSavedEvents() after successful submission
+init(submitAnalytics, { maxEventsLimitUntilSubmit: 100 });
+```
+
+## Notes
+
+- Removes the `'events'` key from localStorage entirely
+- Does not affect events in memory (current session) - use `clearEvents()` for that
+- This function is automatically called in the `init()` flow after successful event submission
+- Once deleted, saved events cannot be recovered
+- Useful for privacy compliance or after successful data synchronization
+- Implementation uses `localStorage.removeItem('events')`

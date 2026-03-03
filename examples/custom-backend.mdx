@@ -1,0 +1,811 @@
+---
+title: Custom Backend Integration
+description: Complete examples of submission functions for REST APIs, GraphQL, Firebase, and custom webhooks with error handling and retry logic
+---
+
+## Overview
+
+Nanolytics allows you to define custom submission functions to send analytics data to any backend. This guide provides complete examples for common backend integrations including error handling and retry logic.
+
+## Submission Function Signature
+
+The submission function receives two parameters:
+
+```typescript
+type SubmitAnalyticsCallback = (
+  userInfo: Record<string, any>,
+  events: Event[]
+) => Promise<void>;
+```
+
+- `userInfo`: User information from `getUserInfo()` (language, platform, userAgent)
+- `events`: Array of event objects to be submitted
+
+<Note>
+Returning a resolved promise (200 OK response) will cause Nanolytics to flush its event store and delete saved events from localStorage.
+</Note>
+
+## REST API Backends
+
+### Basic Fetch Example
+
+```javascript
+import { init } from 'nanolytics';
+
+const submitAnalytics = async (userInfo, events) => {
+  const response = await fetch('https://api.example.com/analytics', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ 
+      state: userInfo, 
+      data: events 
+    }),
+  });
+  
+  if (!response.ok) {
+    throw new Error(`HTTP error! status: ${response.status}`);
+  }
+  
+  return response.json();
+};
+
+init(submitAnalytics, { maxEventsLimitUntilSubmit: 150 });
+```
+
+### With Authentication
+
+<CodeGroup>
+
+```javascript Bearer Token
+const submitAnalytics = async (userInfo, events) => {
+  const token = localStorage.getItem('authToken');
+  
+  const response = await fetch('https://api.example.com/analytics', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`,
+    },
+    body: JSON.stringify({ 
+      state: userInfo, 
+      data: events,
+      timestamp: Date.now(),
+    }),
+  });
+  
+  if (!response.ok) {
+    throw new Error(`Failed to submit analytics: ${response.statusText}`);
+  }
+  
+  return response.json();
+};
+```
+
+```javascript API Key
+const submitAnalytics = async (userInfo, events) => {
+  const response = await fetch('https://api.example.com/analytics', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-API-Key': process.env.ANALYTICS_API_KEY,
+    },
+    body: JSON.stringify({ 
+      state: userInfo, 
+      data: events 
+    }),
+  });
+  
+  if (!response.ok) {
+    throw new Error(`Submission failed: ${response.status}`);
+  }
+};
+```
+
+```javascript Custom Headers
+const submitAnalytics = async (userInfo, events) => {
+  const response = await fetch('https://api.example.com/analytics', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Client-ID': 'your-client-id',
+      'X-Client-Version': '1.0.0',
+      'X-Session-ID': sessionStorage.getItem('sessionId'),
+    },
+    body: JSON.stringify({ 
+      state: userInfo, 
+      data: events,
+      metadata: {
+        source: 'web',
+        version: '1.0.0',
+      },
+    }),
+  });
+  
+  if (!response.ok) {
+    throw new Error('Analytics submission failed');
+  }
+};
+```
+
+</CodeGroup>
+
+### Using Axios
+
+```javascript
+import axios from 'axios';
+import { init } from 'nanolytics';
+
+const submitAnalytics = async (userInfo, events) => {
+  try {
+    const response = await axios.post('https://api.example.com/analytics', {
+      state: userInfo,
+      data: events,
+      timestamp: Date.now(),
+    }, {
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${getAuthToken()}`,
+      },
+      timeout: 10000, // 10 second timeout
+    });
+    
+    return response.data;
+  } catch (error) {
+    console.error('Analytics submission failed:', error);
+    throw error;
+  }
+};
+
+init(submitAnalytics, { maxEventsLimitUntilSubmit: 100 });
+```
+
+### PUT Request Example
+
+```javascript
+const submitAnalytics = async (userInfo, events) => {
+  const response = await fetch('https://api.example.com/analytics', {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ 
+      state: userInfo, 
+      data: events 
+    }),
+  });
+  
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+  }
+  
+  return response.json();
+};
+```
+
+## GraphQL Backends
+
+### Basic GraphQL Mutation
+
+```javascript
+import { init } from 'nanolytics';
+
+const submitAnalytics = async (userInfo, events) => {
+  const mutation = `
+    mutation SubmitAnalytics($input: AnalyticsInput!) {
+      submitAnalytics(input: $input) {
+        success
+        message
+      }
+    }
+  `;
+  
+  const response = await fetch('https://api.example.com/graphql', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      query: mutation,
+      variables: {
+        input: {
+          userInfo,
+          events,
+          timestamp: Date.now(),
+        },
+      },
+    }),
+  });
+  
+  const result = await response.json();
+  
+  if (result.errors) {
+    throw new Error(`GraphQL errors: ${JSON.stringify(result.errors)}`);
+  }
+  
+  if (!result.data.submitAnalytics.success) {
+    throw new Error(result.data.submitAnalytics.message);
+  }
+  
+  return result.data;
+};
+
+init(submitAnalytics, { maxEventsLimitUntilSubmit: 150 });
+```
+
+### Using Apollo Client
+
+```javascript
+import { gql } from '@apollo/client';
+import { apolloClient } from './apollo-client';
+import { init } from 'nanolytics';
+
+const SUBMIT_ANALYTICS = gql`
+  mutation SubmitAnalytics($userInfo: JSON!, $events: [EventInput!]!) {
+    submitAnalytics(userInfo: $userInfo, events: $events) {
+      success
+      processedCount
+    }
+  }
+`;
+
+const submitAnalytics = async (userInfo, events) => {
+  try {
+    const { data } = await apolloClient.mutate({
+      mutation: SUBMIT_ANALYTICS,
+      variables: {
+        userInfo,
+        events: events.map(event => ({
+          name: event.e,
+          timestamp: event.t,
+          context: event.c,
+          metadata: Object.keys(event)
+            .filter(key => !['e', 't', 'c'].includes(key))
+            .reduce((acc, key) => ({ ...acc, [key]: event[key] }), {}),
+        })),
+      },
+    });
+    
+    if (!data.submitAnalytics.success) {
+      throw new Error('Analytics submission failed');
+    }
+    
+    console.log(`Processed ${data.submitAnalytics.processedCount} events`);
+  } catch (error) {
+    console.error('Failed to submit analytics:', error);
+    throw error;
+  }
+};
+
+init(submitAnalytics, { maxEventsLimitUntilSubmit: 100 });
+```
+
+## Firebase Integration
+
+### Firestore
+
+```javascript
+import { initializeApp } from 'firebase/app';
+import { getFirestore, collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import { init } from 'nanolytics';
+
+// Initialize Firebase
+const firebaseApp = initializeApp({
+  apiKey: process.env.FIREBASE_API_KEY,
+  projectId: process.env.FIREBASE_PROJECT_ID,
+  // ... other config
+});
+
+const db = getFirestore(firebaseApp);
+
+const submitAnalytics = async (userInfo, events) => {
+  try {
+    // Store as a single document with batch of events
+    const docRef = await addDoc(collection(db, 'analytics'), {
+      userInfo,
+      events,
+      submittedAt: serverTimestamp(),
+      eventCount: events.length,
+    });
+    
+    console.log('Analytics submitted with ID:', docRef.id);
+  } catch (error) {
+    console.error('Error submitting to Firestore:', error);
+    throw error;
+  }
+};
+
+init(submitAnalytics, { maxEventsLimitUntilSubmit: 150 });
+```
+
+### Firebase Realtime Database
+
+```javascript
+import { initializeApp } from 'firebase/app';
+import { getDatabase, ref, push, serverTimestamp } from 'firebase/database';
+import { init } from 'nanolytics';
+
+const firebaseApp = initializeApp({ /* config */ });
+const database = getDatabase(firebaseApp);
+
+const submitAnalytics = async (userInfo, events) => {
+  try {
+    const analyticsRef = ref(database, 'analytics');
+    
+    await push(analyticsRef, {
+      userInfo,
+      events,
+      timestamp: serverTimestamp(),
+      eventCount: events.length,
+    });
+    
+    console.log('Analytics submitted to Realtime Database');
+  } catch (error) {
+    console.error('Error submitting to Realtime Database:', error);
+    throw error;
+  }
+};
+
+init(submitAnalytics, { maxEventsLimitUntilSubmit: 100 });
+```
+
+## Custom Webhooks
+
+### Simple Webhook
+
+```javascript
+const submitAnalytics = async (userInfo, events) => {
+  const response = await fetch('https://hooks.example.com/analytics', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Webhook-Secret': process.env.WEBHOOK_SECRET,
+    },
+    body: JSON.stringify({
+      type: 'analytics.batch',
+      data: {
+        userInfo,
+        events,
+        metadata: {
+          source: 'nanolytics',
+          version: '1.0.0',
+          timestamp: Date.now(),
+        },
+      },
+    }),
+  });
+  
+  if (!response.ok) {
+    throw new Error(`Webhook failed: ${response.status}`);
+  }
+};
+```
+
+### Slack Webhook (Monitoring)
+
+```javascript
+const submitAnalytics = async (userInfo, events) => {
+  // Send to your actual backend
+  await fetch('https://api.example.com/analytics', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ state: userInfo, data: events }),
+  });
+  
+  // Also send notification to Slack for monitoring
+  const criticalEvents = events.filter(e => 
+    e.e === 'Error' || e.e === 'CriticalAction'
+  );
+  
+  if (criticalEvents.length > 0) {
+    await fetch(process.env.SLACK_WEBHOOK_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        text: `🚨 ${criticalEvents.length} critical events logged`,
+        blocks: [
+          {
+            type: 'section',
+            text: {
+              type: 'mrkdwn',
+              text: `*Critical Events:*\n${criticalEvents.map(e => `• ${e.e}`).join('\n')}`,
+            },
+          },
+        ],
+      }),
+    });
+  }
+};
+```
+
+## Error Handling Patterns
+
+### Basic Error Handling
+
+```javascript
+const submitAnalytics = async (userInfo, events) => {
+  try {
+    const response = await fetch('https://api.example.com/analytics', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ state: userInfo, data: events }),
+    });
+    
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    }
+    
+    return response.json();
+  } catch (error) {
+    console.error('Analytics submission failed:', error);
+    
+    // Log error to monitoring service
+    logErrorToMonitoring(error, { userInfo, eventCount: events.length });
+    
+    // Re-throw to prevent clearing events from localStorage
+    throw error;
+  }
+};
+```
+
+### Retry Logic with Exponential Backoff
+
+```javascript
+const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+const submitWithRetry = async (url, payload, maxRetries = 3) => {
+  let lastError;
+  
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+      
+      return response.json();
+    } catch (error) {
+      lastError = error;
+      
+      if (attempt < maxRetries - 1) {
+        // Exponential backoff: 1s, 2s, 4s
+        const delay = Math.pow(2, attempt) * 1000;
+        console.log(`Retry attempt ${attempt + 1} after ${delay}ms`);
+        await sleep(delay);
+      }
+    }
+  }
+  
+  throw lastError;
+};
+
+const submitAnalytics = async (userInfo, events) => {
+  try {
+    await submitWithRetry(
+      'https://api.example.com/analytics',
+      { state: userInfo, data: events }
+    );
+  } catch (error) {
+    console.error('All retry attempts failed:', error);
+    throw error;
+  }
+};
+```
+
+### Graceful Degradation
+
+```javascript
+const submitAnalytics = async (userInfo, events) => {
+  const primaryEndpoint = 'https://api.example.com/analytics';
+  const fallbackEndpoint = 'https://backup-api.example.com/analytics';
+  
+  try {
+    // Try primary endpoint
+    const response = await fetch(primaryEndpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ state: userInfo, data: events }),
+      timeout: 5000,
+    });
+    
+    if (!response.ok) {
+      throw new Error('Primary endpoint failed');
+    }
+    
+    return response.json();
+  } catch (primaryError) {
+    console.warn('Primary endpoint failed, trying fallback:', primaryError);
+    
+    try {
+      // Try fallback endpoint
+      const response = await fetch(fallbackEndpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ state: userInfo, data: events }),
+      });
+      
+      if (!response.ok) {
+        throw new Error('Fallback endpoint failed');
+      }
+      
+      return response.json();
+    } catch (fallbackError) {
+      console.error('Both endpoints failed:', fallbackError);
+      throw fallbackError;
+    }
+  }
+};
+```
+
+## Batching and Throttling
+
+### Custom Batching Logic
+
+```javascript
+import { init, getSavedEvents, deleteSavedEvents, getUserInfo } from 'nanolytics';
+
+const BATCH_SIZE = 50;
+
+const submitAnalytics = async (userInfo, events) => {
+  // Split events into batches
+  const batches = [];
+  for (let i = 0; i < events.length; i += BATCH_SIZE) {
+    batches.push(events.slice(i, i + BATCH_SIZE));
+  }
+  
+  // Submit batches sequentially
+  for (const batch of batches) {
+    const response = await fetch('https://api.example.com/analytics', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        state: userInfo,
+        data: batch,
+        batchInfo: {
+          size: batch.length,
+          total: events.length,
+        },
+      }),
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Batch submission failed: ${response.status}`);
+    }
+  }
+  
+  console.log(`Submitted ${batches.length} batches, ${events.length} total events`);
+};
+
+init(submitAnalytics, { maxEventsLimitUntilSubmit: 200 });
+```
+
+### Rate Limiting
+
+```javascript
+class RateLimiter {
+  constructor(maxRequests, timeWindow) {
+    this.maxRequests = maxRequests;
+    this.timeWindow = timeWindow;
+    this.requests = [];
+  }
+  
+  async waitForSlot() {
+    const now = Date.now();
+    this.requests = this.requests.filter(t => now - t < this.timeWindow);
+    
+    if (this.requests.length >= this.maxRequests) {
+      const oldestRequest = this.requests[0];
+      const waitTime = this.timeWindow - (now - oldestRequest);
+      await new Promise(resolve => setTimeout(resolve, waitTime));
+      return this.waitForSlot();
+    }
+    
+    this.requests.push(now);
+  }
+}
+
+const rateLimiter = new RateLimiter(10, 60000); // 10 requests per minute
+
+const submitAnalytics = async (userInfo, events) => {
+  await rateLimiter.waitForSlot();
+  
+  const response = await fetch('https://api.example.com/analytics', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ state: userInfo, data: events }),
+  });
+  
+  if (!response.ok) {
+    throw new Error('Submission failed');
+  }
+};
+```
+
+## Environment-Specific Backends
+
+```javascript
+const getAnalyticsEndpoint = () => {
+  const env = process.env.NODE_ENV;
+  
+  switch (env) {
+    case 'production':
+      return 'https://api.example.com/analytics';
+    case 'staging':
+      return 'https://staging-api.example.com/analytics';
+    case 'development':
+      return 'http://localhost:3000/analytics';
+    default:
+      return 'http://localhost:3000/analytics';
+  }
+};
+
+const submitAnalytics = async (userInfo, events) => {
+  const endpoint = getAnalyticsEndpoint();
+  
+  // Skip submission in test environment
+  if (process.env.NODE_ENV === 'test') {
+    console.log('Test mode: skipping analytics submission');
+    return;
+  }
+  
+  const response = await fetch(endpoint, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Environment': process.env.NODE_ENV,
+    },
+    body: JSON.stringify({ state: userInfo, data: events }),
+  });
+  
+  if (!response.ok) {
+    throw new Error(`Submission failed: ${response.status}`);
+  }
+};
+```
+
+## Complete Example with All Features
+
+```javascript
+import { init } from 'nanolytics';
+
+const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+class AnalyticsSubmitter {
+  constructor(endpoint, options = {}) {
+    this.endpoint = endpoint;
+    this.maxRetries = options.maxRetries || 3;
+    this.timeout = options.timeout || 10000;
+    this.enableLogging = options.enableLogging || false;
+  }
+  
+  log(message, data) {
+    if (this.enableLogging) {
+      console.log(`[Analytics] ${message}`, data || '');
+    }
+  }
+  
+  async submitWithRetry(payload) {
+    let lastError;
+    
+    for (let attempt = 0; attempt < this.maxRetries; attempt++) {
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), this.timeout);
+        
+        const response = await fetch(this.endpoint, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${this.getAuthToken()}`,
+          },
+          body: JSON.stringify(payload),
+          signal: controller.signal,
+        });
+        
+        clearTimeout(timeoutId);
+        
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+        
+        this.log('Successfully submitted', { eventCount: payload.data.length });
+        return response.json();
+      } catch (error) {
+        lastError = error;
+        this.log(`Attempt ${attempt + 1} failed`, error.message);
+        
+        if (attempt < this.maxRetries - 1) {
+          const delay = Math.pow(2, attempt) * 1000;
+          this.log(`Retrying in ${delay}ms`);
+          await sleep(delay);
+        }
+      }
+    }
+    
+    this.log('All attempts failed', lastError);
+    throw lastError;
+  }
+  
+  getAuthToken() {
+    return localStorage.getItem('authToken') || '';
+  }
+  
+  async submit(userInfo, events) {
+    try {
+      await this.submitWithRetry({
+        state: userInfo,
+        data: events,
+        metadata: {
+          timestamp: Date.now(),
+          source: 'nanolytics',
+          version: '1.0.0',
+        },
+      });
+    } catch (error) {
+      console.error('Analytics submission failed:', error);
+      throw error;
+    }
+  }
+}
+
+// Initialize
+const submitter = new AnalyticsSubmitter(
+  'https://api.example.com/analytics',
+  {
+    maxRetries: 3,
+    timeout: 10000,
+    enableLogging: process.env.NODE_ENV === 'development',
+  }
+);
+
+init(
+  (userInfo, events) => submitter.submit(userInfo, events),
+  { maxEventsLimitUntilSubmit: 150 }
+);
+```
+
+## Testing Submission Functions
+
+### Mock for Testing
+
+```javascript
+const createMockSubmitFn = () => {
+  const submissions = [];
+  
+  const submitFn = async (userInfo, events) => {
+    submissions.push({ userInfo, events, timestamp: Date.now() });
+    return Promise.resolve();
+  };
+  
+  submitFn.getSubmissions = () => submissions;
+  submitFn.clear = () => submissions.length = 0;
+  
+  return submitFn;
+};
+
+// Usage in tests
+const mockSubmit = createMockSubmitFn();
+init(mockSubmit, { maxEventsLimitUntilSubmit: 10 });
+
+// Later in tests
+const submissions = mockSubmit.getSubmissions();
+expect(submissions).toHaveLength(1);
+expect(submissions[0].events).toHaveLength(10);
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Basic Tracking" icon="chart-simple" href="/examples/basic-tracking">
+    Learn vanilla JavaScript tracking patterns
+  </Card>
+  <Card title="React Integration" icon="react" href="/examples/react-integration">
+    Integrate Nanolytics in React applications
+  </Card>
+</CardGroup>

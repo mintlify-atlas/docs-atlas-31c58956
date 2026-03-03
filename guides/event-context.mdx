@@ -1,0 +1,492 @@
+---
+title: Event Context
+description: Learn how to add rich contextual data to your analytics events using the context parameter and moreContext object.
+---
+
+Nanolytics allows you to capture detailed contextual information with every event. This enables powerful analysis by tracking where events occurred, who triggered them, and under what conditions.
+
+## The Event Type Structure
+
+Every event in Nanolytics follows a simple, extensible structure:
+
+```typescript
+type Event = {
+  [key: string]: any; // additional context or data
+  c?: string;         // optional context
+  e: string;          // event name (required)
+  t: number;          // timestamp in seconds (required)
+};
+```
+
+### Core Properties
+
+<Steps>
+  <Step title="e - Event Name">
+    **Required.** The name of the event being tracked (e.g., "ButtonClicked", "FormSubmitted").
+  </Step>
+  
+  <Step title="t - Timestamp">
+    **Required.** Unix timestamp in seconds, automatically generated when `record()` is called.
+  </Step>
+  
+  <Step title="c - Context">
+    **Optional.** A string representing the context where the event occurred (e.g., screen name, component name).
+  </Step>
+  
+  <Step title="Additional Properties">
+    **Optional.** Any custom properties you add via the `moreContext` parameter.
+  </Step>
+</Steps>
+
+## Using the record() Function
+
+The `record()` function accepts three parameters:
+
+```typescript
+record(event: string, context?: string, moreContext?: Record<string, any>)
+```
+
+### Basic Usage
+
+<CodeGroup>
+
+```javascript Simple Event
+import { record } from 'nanolytics';
+
+// Record a basic event with just a name
+record('ButtonClicked');
+
+// Result: { e: 'ButtonClicked', t: 1709481234 }
+```
+
+```javascript With Context
+// Record an event with context (screen/component name)
+record('ButtonClicked', 'HomePage');
+
+// Result: { e: 'ButtonClicked', c: 'HomePage', t: 1709481234 }
+```
+
+```javascript With Additional Data
+// Record an event with extra metadata
+record('FormSubmitted', 'SignUpForm', { referrer: 'Homepage' });
+
+// Result: {
+//   e: 'FormSubmitted',
+//   c: 'SignUpForm',
+//   t: 1709481234,
+//   referrer: 'Homepage'
+// }
+```
+
+</CodeGroup>
+
+## Context Parameter
+
+The `context` parameter is designed to capture **where** the event occurred. This is typically:
+
+- Screen or page names
+- Component identifiers
+- Modal or dialog names
+- Navigation sections
+
+### Implementation Example
+
+```javascript
+// From src/api.ts:46-54
+export const record = (event: string, context?: string, moreContext: Record<string, any> = {}) => {
+  const stat: Event = { ...createEvent(event), ...moreContext };
+
+  if (context) {
+    stat.c = context;
+  }
+
+  events.push(stat);
+};
+```
+
+<Note>
+  The context is only added to the event object if provided. Empty or undefined context values are omitted to keep event data lean.
+</Note>
+
+### Screen Tracking
+
+Track which screen or page users interact with:
+
+```javascript
+import { record } from 'nanolytics';
+
+// In your navigation handler or route change listener
+function onPageChange(pageName) {
+  record('PageView', pageName);
+}
+
+// Track button clicks with screen context
+function handleButtonClick() {
+  record('ButtonClicked', 'HomePage');
+}
+
+// Track modal interactions
+function openModal(modalName) {
+  record('ModalOpened', modalName);
+}
+```
+
+### Component Tracking
+
+Identify which UI components generate events:
+
+<Tabs>
+  <Tab title="React">
+    ```jsx
+    import { record } from 'nanolytics';
+
+    function VideoPlayer({ videoId }) {
+      const handlePlay = () => {
+        record('VideoPlayed', 'VideoPlayer', { videoId });
+      };
+
+      const handlePause = () => {
+        record('VideoPaused', 'VideoPlayer', { videoId });
+      };
+
+      return (
+        <video onPlay={handlePlay} onPause={handlePause}>
+          {/* video content */}
+        </video>
+      );
+    }
+    ```
+  </Tab>
+  
+  <Tab title="Vue">
+    ```vue
+    <script setup>
+    import { record } from 'nanolytics';
+
+    const props = defineProps(['videoId']);
+
+    const handlePlay = () => {
+      record('VideoPlayed', 'VideoPlayer', { videoId: props.videoId });
+    };
+
+    const handlePause = () => {
+      record('VideoPaused', 'VideoPlayer', { videoId: props.videoId });
+    };
+    </script>
+
+    <template>
+      <video @play="handlePlay" @pause="handlePause">
+        <!-- video content -->
+      </video>
+    </template>
+    ```
+  </Tab>
+  
+  <Tab title="Vanilla JS">
+    ```javascript
+    import { record } from 'nanolytics';
+
+    const videoPlayer = document.querySelector('#video-player');
+    const videoId = videoPlayer.dataset.videoId;
+
+    videoPlayer.addEventListener('play', () => {
+      record('VideoPlayed', 'VideoPlayer', { videoId });
+    });
+
+    videoPlayer.addEventListener('pause', () => {
+      record('VideoPaused', 'VideoPlayer', { videoId });
+    });
+    ```
+  </Tab>
+</Tabs>
+
+## The moreContext Object
+
+The `moreContext` parameter allows you to attach any additional data to your events. This object is spread directly into the event:
+
+```javascript
+// From src/api.ts:46-47
+const stat: Event = { ...createEvent(event), ...moreContext };
+```
+
+### Tracking User IDs
+
+Associate events with specific users:
+
+```javascript
+import { record } from 'nanolytics';
+
+// Get user ID from your auth system
+const userId = getCurrentUserId();
+
+record('PurchaseCompleted', 'CheckoutPage', {
+  userId,
+  amount: 99.99,
+  currency: 'USD',
+  items: 3,
+});
+
+// Result: {
+//   e: 'PurchaseCompleted',
+//   c: 'CheckoutPage',
+//   t: 1709481234,
+//   userId: 'user-123',
+//   amount: 99.99,
+//   currency: 'USD',
+//   items: 3
+// }
+```
+
+### Custom Metadata
+
+Capture any relevant data about the event:
+
+<CodeGroup>
+
+```javascript Form Tracking
+record('FormSubmitted', 'ContactForm', {
+  fields: ['name', 'email', 'message'],
+  validationErrors: 0,
+  timeToComplete: 45, // seconds
+});
+```
+
+```javascript Search Tracking
+record('SearchPerformed', 'SearchBar', {
+  query: 'javascript analytics',
+  resultsCount: 127,
+  filterApplied: 'recent',
+});
+```
+
+```javascript Error Tracking
+record('ErrorOccurred', 'PaymentForm', {
+  errorType: 'ValidationError',
+  errorMessage: 'Invalid card number',
+  errorCode: 'CARD_INVALID',
+});
+```
+
+```javascript Feature Usage
+record('FeatureUsed', 'Editor', {
+  feature: 'AutoSave',
+  wordCount: 1250,
+  sessionDuration: 320, // seconds
+});
+```
+
+</CodeGroup>
+
+### Test Example
+
+From the test suite, here's how context and moreContext work together:
+
+```javascript
+// From src/index.test.ts:42-44
+it('should record an event with additional context', () => {
+  record('ButtonClicked', 'HomePage', { extraData: '123' });
+  expect(getEvents()).toEqual([
+    {
+      c: 'HomePage',
+      e: 'ButtonClicked',
+      extraData: '123',
+      t: expect.any(Number)
+    }
+  ]);
+});
+```
+
+## Advanced Patterns
+
+### Dynamic Context from Router
+
+Integrate with your routing system:
+
+```javascript
+import { record } from 'nanolytics';
+import { useLocation } from 'react-router-dom';
+
+function useAnalytics() {
+  const location = useLocation();
+
+  const trackEvent = (eventName, moreContext = {}) => {
+    record(eventName, location.pathname, {
+      ...moreContext,
+      route: location.pathname,
+      search: location.search,
+    });
+  };
+
+  return { trackEvent };
+}
+
+// Usage
+const { trackEvent } = useAnalytics();
+trackEvent('ButtonClicked', { buttonId: 'submit' });
+```
+
+### Hierarchical Context
+
+Build structured context for complex UIs:
+
+```javascript
+import { record } from 'nanolytics';
+
+function trackNestedEvent(event, hierarchy, moreContext = {}) {
+  const context = hierarchy.join(' > ');
+  record(event, context, moreContext);
+}
+
+// Usage
+trackNestedEvent(
+  'ItemClicked',
+  ['Dashboard', 'ProjectList', 'Project-123'],
+  { itemType: 'project' }
+);
+
+// Result: {
+//   e: 'ItemClicked',
+//   c: 'Dashboard > ProjectList > Project-123',
+//   itemType: 'project',
+//   t: 1709481234
+// }
+```
+
+### Session-Specific Context
+
+Add session-level metadata to all events:
+
+```javascript
+import { record } from 'nanolytics';
+
+// Capture session info once
+const sessionContext = {
+  sessionId: generateSessionId(),
+  deviceType: getDeviceType(),
+  referrer: document.referrer,
+};
+
+// Helper to include session context in every event
+function trackWithSession(event, context, moreContext = {}) {
+  record(event, context, {
+    ...sessionContext,
+    ...moreContext,
+  });
+}
+
+// All events now include session data
+trackWithSession('PageView', 'Dashboard');
+trackWithSession('ButtonClicked', 'Settings', { action: 'save' });
+```
+
+### A/B Test Tracking
+
+Track experiment variants:
+
+```javascript
+import { record } from 'nanolytics';
+
+const experimentVariant = getExperimentVariant('new-checkout-flow');
+
+record('CheckoutStarted', 'CheckoutPage', {
+  experiment: 'new-checkout-flow',
+  variant: experimentVariant, // 'control' or 'variant-a'
+  userId: getCurrentUserId(),
+});
+```
+
+<Tip>
+  Use consistent naming conventions for your context strings and moreContext keys. This makes querying and analyzing your analytics data much easier.
+</Tip>
+
+## Best Practices
+
+<Steps>
+  <Step title="Keep Context Concise">
+    Use short, descriptive strings for the context parameter. Avoid full URLs or lengthy descriptions.
+    ```javascript
+    // Good
+    record('ButtonClicked', 'HomePage');
+    
+    // Avoid
+    record('ButtonClicked', 'https://example.com/home?ref=123&utm_source=email');
+    ```
+  </Step>
+  
+  <Step title="Structure Your Events">
+    Use consistent event naming patterns:
+    ```javascript
+    // Action-based naming
+    record('ButtonClicked', 'HomePage');
+    record('FormSubmitted', 'SignUp');
+    record('VideoPlayed', 'Tutorial');
+    
+    // Object-Action naming
+    record('Cart:ItemAdded', 'ProductPage');
+    record('User:LoggedIn', 'LoginPage');
+    ```
+  </Step>
+  
+  <Step title="Don't Include PII">
+    Avoid logging personally identifiable information in plaintext:
+    ```javascript
+    // Good - use hashed or anonymized IDs
+    record('ProfileViewed', 'Profile', { userId: hashUserId(email) });
+    
+    // Avoid - raw email addresses
+    record('ProfileViewed', 'Profile', { email: 'user@example.com' });
+    ```
+  </Step>
+  
+  <Step title="Limit moreContext Size">
+    Keep additional context lean to avoid bloating localStorage:
+    ```javascript
+    // Good - key metrics only
+    record('SearchPerformed', 'SearchBar', {
+      resultsCount: 42,
+      query: searchTerm.substring(0, 100),
+    });
+    
+    // Avoid - huge payloads
+    record('SearchPerformed', 'SearchBar', {
+      fullResults: [...1000 items],
+    });
+    ```
+  </Step>
+</Steps>
+
+<Warning>
+  Remember that all context data is stored in localStorage, which has a typical limit of 5-10MB. Keep your events lean to avoid storage issues.
+</Warning>
+
+## Querying Events with Context
+
+Once events are submitted to your backend, you can analyze them by context:
+
+```sql
+-- Find all events from a specific screen
+SELECT * FROM events WHERE context = 'HomePage';
+
+-- Count events by context
+SELECT context, COUNT(*) as event_count
+FROM events
+GROUP BY context
+ORDER BY event_count DESC;
+
+-- Analyze user behavior on specific screen
+SELECT event_name, COUNT(*) as count
+FROM events
+WHERE context = 'CheckoutPage'
+GROUP BY event_name;
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Session Tracking" icon="clock" href="/guides/session-tracking">
+    Learn about automatic session management
+  </Card>
+  <Card title="Custom Submission" icon="upload" href="/guides/custom-submission">
+    Implement custom submission logic
+  </Card>
+</CardGroup>

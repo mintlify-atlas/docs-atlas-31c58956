@@ -1,0 +1,691 @@
+---
+title: React Integration
+description: Complete guide to integrating Nanolytics in React applications with hooks and components
+---
+
+## Overview
+
+This guide shows you how to integrate Nanolytics into React applications, including initialization, custom hooks, component lifecycle tracking, and best practices.
+
+## Installation
+
+```bash
+npm install nanolytics
+# or
+yarn add nanolytics
+# or
+pnpm i nanolytics
+```
+
+## Basic Setup
+
+### Initialize in App Component
+
+Initialize Nanolytics once when your app starts:
+
+```jsx App.jsx
+import { useEffect } from 'react';
+import { init, record } from 'nanolytics';
+
+function App() {
+  useEffect(() => {
+    // Define submission function
+    const submitAnalytics = async (userInfo, events) => {
+      const response = await fetch('/api/analytics', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ 
+          state: userInfo, 
+          data: events 
+        }),
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to submit analytics');
+      }
+    };
+
+    // Initialize only once
+    init(submitAnalytics, { maxEventsLimitUntilSubmit: 150 });
+  }, []); // Empty dependency array ensures this runs once
+
+  return (
+    <div className="App">
+      {/* Your app components */}
+    </div>
+  );
+}
+
+export default App;
+```
+
+### Separate Analytics Module
+
+For better organization, create a dedicated analytics module:
+
+<CodeGroup>
+
+```javascript analytics.js
+import { init, record, commit } from 'nanolytics';
+
+const submitAnalytics = async (userInfo, events) => {
+  const response = await fetch('/api/analytics', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ 
+      state: userInfo, 
+      data: events 
+    }),
+  });
+  
+  if (!response.ok) {
+    throw new Error('Analytics submission failed');
+  }
+};
+
+export const initAnalytics = () => {
+  init(submitAnalytics, { maxEventsLimitUntilSubmit: 150 });
+};
+
+export const trackEvent = (event, context, data) => {
+  record(event, context, data);
+};
+
+export const commitEvents = () => {
+  commit();
+};
+```
+
+```jsx App.jsx
+import { useEffect } from 'react';
+import { initAnalytics } from './analytics';
+
+function App() {
+  useEffect(() => {
+    initAnalytics();
+  }, []);
+
+  return <div className="App">{/* Your components */}</div>;
+}
+
+export default App;
+```
+
+</CodeGroup>
+
+## Custom Hooks
+
+### useAnalytics Hook
+
+Create a custom hook for easy event tracking:
+
+```jsx hooks/useAnalytics.js
+import { useCallback } from 'react';
+import { record, commit } from 'nanolytics';
+
+export const useAnalytics = () => {
+  const track = useCallback((event, context, data) => {
+    record(event, context, data);
+  }, []);
+
+  const trackClick = useCallback((buttonName, additionalData = {}) => {
+    record('ButtonClicked', window.location.pathname, {
+      button: buttonName,
+      ...additionalData,
+    });
+  }, []);
+
+  const trackPageView = useCallback((pageName, additionalData = {}) => {
+    record('PageView', pageName, {
+      title: document.title,
+      ...additionalData,
+    });
+  }, []);
+
+  const endSession = useCallback(() => {
+    commit();
+  }, []);
+
+  return {
+    track,
+    trackClick,
+    trackPageView,
+    endSession,
+  };
+};
+```
+
+### Usage in Components
+
+```jsx components/SignUpButton.jsx
+import { useAnalytics } from '../hooks/useAnalytics';
+
+function SignUpButton() {
+  const { trackClick } = useAnalytics();
+
+  const handleClick = () => {
+    trackClick('signup', { 
+      source: 'header',
+      timestamp: Date.now()
+    });
+    // Proceed with signup logic...
+  };
+
+  return (
+    <button onClick={handleClick}>
+      Sign Up
+    </button>
+  );
+}
+
+export default SignUpButton;
+```
+
+### usePageTracking Hook
+
+Automatically track page views:
+
+```jsx hooks/usePageTracking.js
+import { useEffect } from 'react';
+import { record } from 'nanolytics';
+import { useLocation } from 'react-router-dom';
+
+export const usePageTracking = () => {
+  const location = useLocation();
+
+  useEffect(() => {
+    record('PageView', location.pathname, {
+      title: document.title,
+      search: location.search,
+      referrer: document.referrer,
+    });
+  }, [location]);
+};
+```
+
+```jsx App.jsx
+import { BrowserRouter } from 'react-router-dom';
+import { usePageTracking } from './hooks/usePageTracking';
+
+function App() {
+  usePageTracking();
+
+  return (
+    <BrowserRouter>
+      {/* Your routes */}
+    </BrowserRouter>
+  );
+}
+```
+
+## Component Lifecycle Tracking
+
+### Track Component Mount/Unmount
+
+```jsx components/Dashboard.jsx
+import { useEffect } from 'react';
+import { record } from 'nanolytics';
+
+function Dashboard() {
+  useEffect(() => {
+    // Track component mount
+    record('ComponentMounted', 'Dashboard', {
+      timestamp: Date.now(),
+    });
+
+    // Track component unmount
+    return () => {
+      record('ComponentUnmounted', 'Dashboard', {
+        timestamp: Date.now(),
+      });
+    };
+  }, []);
+
+  return (
+    <div>
+      {/* Dashboard content */}
+    </div>
+  );
+}
+
+export default Dashboard;
+```
+
+### Track User Interactions
+
+<CodeGroup>
+
+```jsx Button Clicks
+import { record } from 'nanolytics';
+
+function ProductCard({ product }) {
+  const handleAddToCart = () => {
+    record('AddToCart', 'ProductCard', {
+      productId: product.id,
+      productName: product.name,
+      price: product.price,
+      timestamp: Date.now(),
+    });
+    
+    // Add to cart logic...
+  };
+
+  return (
+    <div>
+      <h3>{product.name}</h3>
+      <button onClick={handleAddToCart}>Add to Cart</button>
+    </div>
+  );
+}
+```
+
+```jsx Form Submissions
+import { useState } from 'react';
+import { record } from 'nanolytics';
+
+function ContactForm() {
+  const [formData, setFormData] = useState({ name: '', email: '' });
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    
+    record('FormSubmitted', 'ContactPage', {
+      formType: 'contact',
+      fields: Object.keys(formData),
+      timestamp: Date.now(),
+    });
+    
+    // Submit form logic...
+  };
+
+  return (
+    <form onSubmit={handleSubmit}>
+      <input 
+        type="text" 
+        value={formData.name}
+        onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+      />
+      <input 
+        type="email" 
+        value={formData.email}
+        onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+      />
+      <button type="submit">Submit</button>
+    </form>
+  );
+}
+```
+
+```jsx Modal Interactions
+import { useEffect, useState } from 'react';
+import { record } from 'nanolytics';
+
+function Modal({ isOpen, onClose }) {
+  useEffect(() => {
+    if (isOpen) {
+      record('ModalOpened', 'SettingsModal', {
+        timestamp: Date.now(),
+      });
+    }
+
+    return () => {
+      if (isOpen) {
+        record('ModalClosed', 'SettingsModal', {
+          timestamp: Date.now(),
+        });
+      }
+    };
+  }, [isOpen]);
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="modal">
+      {/* Modal content */}
+      <button onClick={onClose}>Close</button>
+    </div>
+  );
+}
+```
+
+</CodeGroup>
+
+## Advanced Patterns
+
+### Track Search Functionality
+
+```jsx components/SearchBar.jsx
+import { useState, useCallback } from 'react';
+import { record } from 'nanolytics';
+import { debounce } from 'lodash';
+
+function SearchBar() {
+  const [query, setQuery] = useState('');
+  const [results, setResults] = useState([]);
+
+  const trackSearch = useCallback(
+    debounce((searchQuery, resultCount) => {
+      record('SearchPerformed', 'Header', {
+        query: searchQuery,
+        resultCount,
+        timestamp: Date.now(),
+      });
+    }, 1000),
+    []
+  );
+
+  const handleSearch = async (e) => {
+    const searchQuery = e.target.value;
+    setQuery(searchQuery);
+
+    if (searchQuery.length > 2) {
+      const searchResults = await performSearch(searchQuery);
+      setResults(searchResults);
+      trackSearch(searchQuery, searchResults.length);
+    }
+  };
+
+  return (
+    <input 
+      type="search" 
+      value={query}
+      onChange={handleSearch}
+      placeholder="Search..."
+    />
+  );
+}
+```
+
+### Track Feature Flags
+
+```jsx hooks/useFeatureFlag.js
+import { useEffect, useState } from 'react';
+import { record } from 'nanolytics';
+
+export const useFeatureFlag = (flagName) => {
+  const [isEnabled, setIsEnabled] = useState(false);
+
+  useEffect(() => {
+    const enabled = checkFeatureFlag(flagName);
+    setIsEnabled(enabled);
+
+    record('FeatureFlagChecked', 'App', {
+      flag: flagName,
+      enabled,
+      timestamp: Date.now(),
+    });
+  }, [flagName]);
+
+  return isEnabled;
+};
+```
+
+### Track Performance Metrics
+
+```jsx hooks/usePerformanceTracking.js
+import { useEffect } from 'react';
+import { record } from 'nanolytics';
+
+export const usePerformanceTracking = (componentName) => {
+  useEffect(() => {
+    const startTime = performance.now();
+
+    return () => {
+      const endTime = performance.now();
+      const renderTime = endTime - startTime;
+
+      record('ComponentPerformance', componentName, {
+        renderTime,
+        timestamp: Date.now(),
+      });
+    };
+  }, [componentName]);
+};
+```
+
+## Error Tracking
+
+### Error Boundary with Analytics
+
+```jsx components/ErrorBoundary.jsx
+import React from 'react';
+import { record } from 'nanolytics';
+
+class ErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false };
+  }
+
+  static getDerivedStateFromError(error) {
+    return { hasError: true };
+  }
+
+  componentDidCatch(error, errorInfo) {
+    // Track error
+    record('ErrorCaught', 'ErrorBoundary', {
+      error: error.toString(),
+      errorInfo: errorInfo.componentStack,
+      timestamp: Date.now(),
+    });
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return <h1>Something went wrong.</h1>;
+    }
+
+    return this.props.children;
+  }
+}
+
+export default ErrorBoundary;
+```
+
+## React Router Integration
+
+### Track Navigation
+
+```jsx App.jsx
+import { useEffect } from 'react';
+import { BrowserRouter, Routes, Route, useNavigate, useLocation } from 'react-router-dom';
+import { init, record } from 'nanolytics';
+
+function AnalyticsWrapper() {
+  const location = useLocation();
+
+  useEffect(() => {
+    record('PageView', location.pathname, {
+      title: document.title,
+      search: location.search,
+      hash: location.hash,
+    });
+  }, [location]);
+
+  return null;
+}
+
+function App() {
+  useEffect(() => {
+    const submitAnalytics = async (userInfo, events) => {
+      await fetch('/api/analytics', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ state: userInfo, data: events }),
+      });
+    };
+
+    init(submitAnalytics, { maxEventsLimitUntilSubmit: 150 });
+  }, []);
+
+  return (
+    <BrowserRouter>
+      <AnalyticsWrapper />
+      <Routes>
+        <Route path="/" element={<Home />} />
+        <Route path="/about" element={<About />} />
+      </Routes>
+    </BrowserRouter>
+  );
+}
+```
+
+## Complete Example
+
+Here's a complete React app with analytics:
+
+<CodeGroup>
+
+```jsx App.jsx
+import { useEffect } from 'react';
+import { BrowserRouter } from 'react-router-dom';
+import { initAnalytics } from './lib/analytics';
+import { usePageTracking } from './hooks/usePageTracking';
+import ErrorBoundary from './components/ErrorBoundary';
+import Routes from './Routes';
+
+function App() {
+  useEffect(() => {
+    initAnalytics();
+  }, []);
+
+  return (
+    <ErrorBoundary>
+      <BrowserRouter>
+        <AppContent />
+      </BrowserRouter>
+    </ErrorBoundary>
+  );
+}
+
+function AppContent() {
+  usePageTracking();
+  return <Routes />;
+}
+
+export default App;
+```
+
+```jsx lib/analytics.js
+import { init, record, commit } from 'nanolytics';
+
+const submitAnalytics = async (userInfo, events) => {
+  const response = await fetch('/api/analytics', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ state: userInfo, data: events }),
+  });
+  
+  if (!response.ok) {
+    throw new Error('Analytics submission failed');
+  }
+};
+
+export const initAnalytics = () => {
+  init(submitAnalytics, { maxEventsLimitUntilSubmit: 150 });
+};
+
+export const trackEvent = (event, context, data) => {
+  record(event, context, data);
+};
+
+export const endSession = () => {
+  commit();
+};
+```
+
+```jsx hooks/useAnalytics.js
+import { useCallback } from 'react';
+import { trackEvent } from '../lib/analytics';
+
+export const useAnalytics = () => {
+  const track = useCallback((event, context, data) => {
+    trackEvent(event, context, data);
+  }, []);
+
+  const trackClick = useCallback((buttonName, data = {}) => {
+    trackEvent('ButtonClicked', window.location.pathname, {
+      button: buttonName,
+      ...data,
+    });
+  }, []);
+
+  return { track, trackClick };
+};
+```
+
+</CodeGroup>
+
+## TypeScript Support
+
+### Type-Safe Analytics
+
+```typescript hooks/useAnalytics.ts
+import { useCallback } from 'react';
+import { record, commit } from 'nanolytics';
+import type { Event } from 'nanolytics';
+
+interface TrackEventData {
+  [key: string]: any;
+}
+
+export const useAnalytics = () => {
+  const track = useCallback(
+    (event: string, context?: string, data?: TrackEventData) => {
+      record(event, context, data);
+    },
+    []
+  );
+
+  const trackClick = useCallback(
+    (buttonName: string, additionalData?: TrackEventData) => {
+      record('ButtonClicked', window.location.pathname, {
+        button: buttonName,
+        ...additionalData,
+      });
+    },
+    []
+  );
+
+  return { track, trackClick };
+};
+```
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Initialize Once">
+    Always initialize Nanolytics once in your root component using `useEffect` with an empty dependency array to prevent multiple initializations.
+  </Accordion>
+  
+  <Accordion title="Use Custom Hooks">
+    Create custom hooks like `useAnalytics` to encapsulate tracking logic and make it reusable across components.
+  </Accordion>
+  
+  <Accordion title="Memoize Callbacks">
+    Use `useCallback` for tracking functions to prevent unnecessary re-renders and maintain referential equality.
+  </Accordion>
+  
+  <Accordion title="Track Meaningful Events">
+    Focus on tracking events that provide business value: user actions, conversions, errors, and performance metrics.
+  </Accordion>
+  
+  <Accordion title="Cleanup on Unmount">
+    Use the cleanup function in `useEffect` to track component unmount or cancel pending operations.
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Basic Tracking" icon="chart-simple" href="/examples/basic-tracking">
+    Learn vanilla JavaScript tracking patterns
+  </Card>
+  <Card title="Custom Backend" icon="server" href="/examples/custom-backend">
+    Implement custom submission functions for different backends
+  </Card>
+</CardGroup>

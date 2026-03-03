@@ -1,0 +1,112 @@
+---
+title: "getSavedEvents"
+description: "Retrieves all events saved in localStorage"
+---
+
+## Function Signature
+
+```typescript
+getSavedEvents(): Event[]
+```
+
+Retrieves all events that have been committed and saved to localStorage. These are events from previous sessions or events that have been explicitly committed using `commit()`.
+
+## Parameters
+
+This function takes no parameters.
+
+## Return Value
+
+<ResponseField name="events" type="Event[]">
+  An array of all events stored in localStorage under the key `'events'`. Returns an empty array if no events are saved.
+  
+  **Event Type:**
+  ```typescript
+  type Event = {
+    e: string;              // event name
+    t: number;              // timestamp (Unix seconds)
+    c?: string;             // optional context
+    [key: string]: any;     // additional context data
+  }
+  ```
+</ResponseField>
+
+## Usage Examples
+
+### Check Saved Events Count
+
+```javascript
+import { getSavedEvents } from 'nanolytics';
+
+const saved = getSavedEvents();
+console.log(`${saved.length} events waiting to be submitted`);
+```
+
+### Display Saved Events
+
+```javascript
+import { getSavedEvents } from 'nanolytics';
+
+const displaySavedEvents = () => {
+  const events = getSavedEvents();
+  
+  events.forEach(event => {
+    const date = new Date(event.t * 1000);
+    console.log(`[${date.toISOString()}] ${event.e}`, event.c || '');
+  });
+};
+```
+
+### Manual Submission Check
+
+```javascript
+import { getSavedEvents, deleteSavedEvents, getUserInfo } from 'nanolytics';
+
+const manualSubmit = async () => {
+  const savedEvents = getSavedEvents();
+  
+  if (savedEvents.length === 0) {
+    console.log('No events to submit');
+    return;
+  }
+  
+  const userInfo = getUserInfo();
+  
+  try {
+    await fetch('/api/analytics', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ state: userInfo, data: savedEvents })
+    });
+    
+    // Clear after successful submission
+    deleteSavedEvents();
+    console.log(`Submitted ${savedEvents.length} events`);
+  } catch (error) {
+    console.error('Submission failed:', error);
+  }
+};
+```
+
+### Check for Old Events
+
+```javascript
+import { getSavedEvents } from 'nanolytics';
+
+const checkOldEvents = () => {
+  const events = getSavedEvents();
+  const now = Math.floor(Date.now() / 1000);
+  const dayInSeconds = 24 * 60 * 60;
+  
+  const oldEvents = events.filter(e => (now - e.t) > dayInSeconds);
+  console.log(`Found ${oldEvents.length} events older than 24 hours`);
+};
+```
+
+## Notes
+
+- Returns events from localStorage, not from the current in-memory session
+- If no events are saved, returns an empty array
+- The localStorage key used is `'events'`
+- Saved events persist across browser sessions until explicitly deleted
+- Use this in combination with `getEvents()` to see both saved and current session events
